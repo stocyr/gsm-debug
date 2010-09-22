@@ -29,9 +29,12 @@
 #include <calypso/sim.h>
 #include <calypso/irq.h>
 
-static int sim_rx_character_count = 0;	/* How many bytes have been received by calypso_sim_receive() */
-static int sim_tx_character_count = 0;	/* How many bytes have been transmitted by calypso_sim_transmit() */
-static int sim_tx_character_length = 0;	/* How many bytes have to be transmitted by calypso_sim_transmit() */
+static void (*sim_wait_cb)(void) = NULL; /* called during waiting for SIM */
+static volatile uint8_t sim_ignore_waiting_char = 0; /* signal ignoring of NULL procedure byte */
+static volatile int sim_rx_character_count = 0;	/* How many bytes have been received by calypso_sim_receive() */
+static volatile int sim_rx_max_character_count = 0;	/* How many bytes have been received by calypso_sim_receive() */
+static volatile int sim_tx_character_count = 0;	/* How many bytes have been transmitted by calypso_sim_transmit() */
+static volatile int sim_tx_character_length = 0;	/* How many bytes have to be transmitted by calypso_sim_transmit() */
 static uint8_t *rx_buffer = 0;		/* RX-Buffer that is issued by calypso_sim_receive() */
 static uint8_t *tx_buffer = 0;		/* TX-Buffer that is issued by calypso_sim_transmit() */
 volatile static int rxDoneFlag = 0;	/* Used for rx synchronization instead of a semaphore in calypso_sim_receive() */
@@ -149,25 +152,25 @@ void calypso_sim_regdump(void)
 	else
 		puts("  |  |-REG_SIM_CONF1_CONFSCLKDIV = 0 ==> SIM clock frequency is 13/4 Mhz.\n");
 	delay_ms(SIM_DEBUG_OUTPUTDELAY);
-    
+
 	if(regVal & REG_SIM_CONF1_CONFSCLKLEV)
 		puts("  |  |-REG_SIM_CONF1_CONFSCLKLEV = 1 ==> SIM clock idle level is high.\n");
 	else
 		puts("  |  |-REG_SIM_CONF1_CONFSCLKLEV = 0 ==> SIM clock idle level is low.\n");
 	delay_ms(SIM_DEBUG_OUTPUTDELAY);
-              
+
 	if(regVal & REG_SIM_CONF1_CONFETUPERIOD)
 		puts("  |  |-REG_SIM_CONF1_CONFETUPERIOD = 1 ==> ETU period is 512/8*1/Fsclk.\n");
 	else
 		puts("  |  |-REG_SIM_CONF1_CONFETUPERIOD = 0 ==> ETU period is 372/8*1/Fsclk.\n");
 	delay_ms(SIM_DEBUG_OUTPUTDELAY);
-	
+
 	if(regVal & REG_SIM_CONF1_CONFBYPASS)
 		puts("  |  |-REG_SIM_CONF1_CONFBYPASS = 1 ==> Hardware timers and start and stop sequences are bypassed.\n");
 	else
 		puts("  |  |-REG_SIM_CONF1_CONFBYPASS = 0 ==> Hardware timers and start and stop sequences are normal.\n");
 	delay_ms(SIM_DEBUG_OUTPUTDELAY);
-          
+
 	if(regVal & REG_SIM_CONF1_CONFSVCCLEV)
 		puts("  |  |-REG_SIM_CONF1_CONFSVCCLEV = 1 ==> SVCC Level is high (Only valid when CONFBYPASS = 1).\n");
 	else
@@ -305,7 +308,11 @@ void calypso_sim_regdump(void)
 int calypso_sim_powerup(uint8_t *atr)
 {
 	/* Enable level shifters and voltage regulator */
+  #if 1  // 2.9V
 	twl3025_reg_write(VRPCSIM, VRPCSIM_SIMLEN | VRPCSIM_RSIMEN | VRPCSIM_SIMSEL);
+  #else // 1.8V
+	twl3025_reg_write(VRPCSIM, VRPCSIM_SIMLEN | VRPCSIM_RSIMEN);
+  #endif
 #if (SIM_DEBUG == 1)
 	puts(" * Power enabled!\n");
 #endif
@@ -326,7 +333,7 @@ int calypso_sim_powerup(uint8_t *atr)
 
 	/* Catch ATR */
 	if(atr != 0)
-		return calypso_sim_receive(atr);
+		return calypso_sim_receive(atr, 0);
 	else
 		return 0;
 }
@@ -383,18 +390,19 @@ int calypso_sim_reset(uint8_t *atr)
 
 	/* Catch ATR */
 	if(atr != 0)
-		return calypso_sim_receive(atr);
+		return calypso_sim_receive(atr, 0);
 	else
 		return 0;
 }
 
 /* Receive raw data through the sim interface */
-int calypso_sim_receive(uint8_t *data)
+int calypso_sim_receive(uint8_t *data, uint8_t len)
 {
 	/* Prepare buffers and flags */
 	rx_buffer = data;
 	sim_rx_character_count = 0;
 	rxDoneFlag = 0;
+	sim_rx_max_character_count = len;
 
 	/* Switch I/O direction to input */
 	writew(readw(REG_SIM_CONF1) & ~REG_SIM_CONF1_CONFTXRX, REG_SIM_CONF1);
@@ -403,14 +411,17 @@ int calypso_sim_receive(uint8_t *data)
 	writew(~(REG_SIM_MASKIT_MASK_SIM_RX | REG_SIM_MASKIT_MASK_SIM_WT), REG_SIM_MASKIT);
 
 	/* Wait till rxDoneFlag is set */
-	while(rxDoneFlag == 0);
+	while(rxDoneFlag == 0)
+	{
+		if(sim_wait_cb) (*sim_wait_cb)();
+	}
 
 	/* Disable all interrupt driven functions by masking all interrupts */
 	writew(0xFF, REG_SIM_MASKIT);
 
 	/* Hand back the number of bytes received */
 	return sim_rx_character_count;
-	
+
 	return;
 }
 
@@ -434,8 +445,11 @@ int calypso_sim_transmit(uint8_t *data, int length)
 	tx_buffer++;
 	sim_tx_character_count++;
 
-	/* Wait till rxDoneFlag is set */
-	while(txDoneFlag == 0);
+	/* Wait till xDoneFlag is set */
+	while(txDoneFlag == 0)
+	{
+		if(sim_wait_cb) (*sim_wait_cb)();
+	}
 
 	/* Disable all interrupt driven functions by masking all interrupts */
 	writew(0xFF, REG_SIM_MASKIT);
@@ -452,7 +466,7 @@ void sim_irq_handler(enum irq_nr irq)
 
 	/* Display interrupt information */
 #if (SIM_DEBUG == 1)
-	puts("SIM-ISR: Interrupt caught: ");
+	puts("SIM-ISR: ");
 #endif
 	if(regVal & REG_SIM_IT_SIM_NATR)
 	{
@@ -481,30 +495,63 @@ void sim_irq_handler(enum irq_nr irq)
 	if(regVal & REG_SIM_IT_SIM_TX)
 	{
 #if (SIM_DEBUG == 1)
-		puts(" Waiting for character to transmit...\n");
+		puts(" Waiting for transmit...\n");
 #endif
 		if(sim_tx_character_count >= sim_tx_character_length)
+		{
 			txDoneFlag = 1;
+		}
 		else
 		{
 			writew(*tx_buffer,REG_SIM_DTX);
 			tx_buffer++;
 			sim_tx_character_count++;
+
+	#if 1 /* Dieter: set to 0 to get problems with some cards */
+			/* its essential to immediately switch to RX after TX is done */
+			if(sim_tx_character_count >= sim_tx_character_length)
+			{
+				/* TODO: set a proper delay here, 4 is to
+				   long if not debugging and no delay is too short */
+				delay_ms(1);
+				/* Switch I/O direction to input */
+				writew(readw(REG_SIM_CONF1) & ~REG_SIM_CONF1_CONFTXRX, REG_SIM_CONF1);
+			}
+	#endif
 		}
 	}
 
 	/* Used by: calypso_sim_receive() to receive the incoming data */
 	if(regVal & REG_SIM_IT_SIM_RX)
 	{
+		uint8_t ch = (uint8_t) (readw(REG_SIM_DRX) & 0xFF);
+		/* ignore NULL procedure byte */
+		if(ch == 0x60 && sim_ignore_waiting_char)
+		{
 #if (SIM_DEBUG == 1)
-		puts(" Waiting characters to be read...\n");
+			puts(" 0x60 received...\n");
+#endif
+			return;
+		}
+
+#if (SIM_DEBUG == 1)
+		printf(" Waiting for read (%02X)...\n", ch);
 #endif
 		/* Increment character count - this is what calypso_sim_receive() hands back */
 		sim_rx_character_count++;
 
 		/* Read byte from rx-fifo and write it to the issued buffer */
-		*rx_buffer = (uint8_t) (readw(REG_SIM_DRX) & 0xFF);
+		*rx_buffer = ch;
 		rx_buffer++;
+
+		/* to maximise SIM access speed, stop waiting after
+		   all the expected characters have been received. */
+		if(sim_rx_max_character_count && sim_rx_character_count >= sim_rx_max_character_count) {
+#if (SIM_DEBUG == 1)
+			puts(" Max characters received!\n");
+#endif
+			rxDoneFlag = 1;
+		}
 	}
 }
 
@@ -518,7 +565,7 @@ int calypso_sim_transceive(uint8_t cla, 		/* Class (in GSM context mostly 0xA0 *
 				uint8_t *status,	/* Status word (2 byte array, see note 1) */
 				uint8_t mode)		/* Mode of operation: 1=GET, 0=PUT */
 
-				/* Note 1: You can use a null-pointer (0) if you are not interested in 
+				/* Note 1: You can use a null-pointer (0) if you are not interested in
 					   the status word */
 {
 	uint8_t transmissionBuffer[256];
@@ -543,8 +590,8 @@ int calypso_sim_transceive(uint8_t cla, 		/* Class (in GSM context mostly 0xA0 *
 #if (SIM_DEBUG == 1)
 		puts("SIM-T0: Case 1: No input, No Output (See also GSM 11.11 Page 34)\n");
 #endif
-		numberOfReceivedBytes = calypso_sim_receive(transmissionBuffer);
-		
+		numberOfReceivedBytes = calypso_sim_receive(transmissionBuffer, 2);
+
 		if(numberOfReceivedBytes == 2)
 		{
 #if (SIM_DEBUG == 1)
@@ -555,7 +602,7 @@ int calypso_sim_transceive(uint8_t cla, 		/* Class (in GSM context mostly 0xA0 *
 			{
 				status[0] = transmissionBuffer[0];
 				status[1] = transmissionBuffer[1];
-			}	
+			}
 
 			return 0;
 		}
@@ -575,7 +622,8 @@ int calypso_sim_transceive(uint8_t cla, 		/* Class (in GSM context mostly 0xA0 *
 		puts("SIM-T0: Case 2: No input / Output of known length (See also GSM 11.11 Page 34)\n");
 #endif
 
-		numberOfReceivedBytes = calypso_sim_receive(transmissionBuffer);
+		/* TODO: waiting for one character is only OK if no error occurs */
+		numberOfReceivedBytes = calypso_sim_receive(transmissionBuffer, 1);
 
 		/* Error situation: The card has aborted, sends no data but a status word */
 		if(numberOfReceivedBytes == 2)
@@ -588,11 +636,11 @@ int calypso_sim_transceive(uint8_t cla, 		/* Class (in GSM context mostly 0xA0 *
 			{
 				status[0] = transmissionBuffer[0];
 				status[1] = transmissionBuffer[1];
-			}				
+			}
 
 			return 0;
 		}
-		/* Acknoledge byte received */
+		/* Acknowledge byte received */
 		else if(numberOfReceivedBytes == 1)
 		{
 #if (SIM_DEBUG == 1)
@@ -603,15 +651,21 @@ int calypso_sim_transceive(uint8_t cla, 		/* Class (in GSM context mostly 0xA0 *
 			{
 #if (SIM_DEBUG == 1)
 				puts("SIM-T0: T0 Protocol error: Invalid ACK byte -- aborting!\n");
-#endif				
+#endif
 				return -1;
 			}
 
 			/* Transmit body */
 			calypso_sim_transmit(data,p3le);
-			
+
+			/* Ignore waiting char for RUN GSM ALGORITHM */
+			/* TODO: implement proper handling of the "Procedure Bytes"
+			   than this is no longer needed */
+			if(ins == 0x88)
+				sim_ignore_waiting_char = 1;
 			/* Receive status word */
-			numberOfReceivedBytes = calypso_sim_receive(transmissionBuffer);
+			numberOfReceivedBytes = calypso_sim_receive(transmissionBuffer, 2);
+			sim_ignore_waiting_char = 0;
 
 			/* Check status word */
 			if(numberOfReceivedBytes == 2)
@@ -633,7 +687,7 @@ int calypso_sim_transceive(uint8_t cla, 		/* Class (in GSM context mostly 0xA0 *
 			{
 #if (SIM_DEBUG == 1)
 				puts("SIM-T0: T0 Protocol error: Missing or invalid status word -- aborting!\n");
-#endif				
+#endif
 				return -1;
 			}
 		}
@@ -653,7 +707,7 @@ int calypso_sim_transceive(uint8_t cla, 		/* Class (in GSM context mostly 0xA0 *
 		puts("SIM-T0: Case 4: Input / No output (See also GSM 11.11 Page 34)\n");
 #endif
 
-		numberOfReceivedBytes = calypso_sim_receive(data);
+		numberOfReceivedBytes = calypso_sim_receive(data, p3le + 1 + 2);
 
 		/* Error situation: The card has aborted, sends no data but a status word */
 		if(numberOfReceivedBytes == 2)
@@ -667,7 +721,7 @@ int calypso_sim_transceive(uint8_t cla, 		/* Class (in GSM context mostly 0xA0 *
 			{
 				status[0] = data[0];
 				status[1] = data[1];
-			}				
+			}
 
 			return 0;
 		}
@@ -683,7 +737,7 @@ int calypso_sim_transceive(uint8_t cla, 		/* Class (in GSM context mostly 0xA0 *
 			{
 #if (SIM_DEBUG == 1)
 				puts("SIM-T0: T0 Protocol error: Invalid ACK byte -- aborting!\n");
-#endif				
+#endif
 				return -1;
 			}
 
@@ -695,8 +749,8 @@ int calypso_sim_transceive(uint8_t cla, 		/* Class (in GSM context mostly 0xA0 *
 			{
 				status[0] = data[p3le + 1];
 				status[1] = data[p3le + 2];
-			}				
-	
+			}
+
 			/* Move data one position left to cut away the ACK-Byte */
 			memcpy(data,data+1,p3le);
 
@@ -727,14 +781,20 @@ int calypso_sim_transceive(uint8_t cla, 		/* Class (in GSM context mostly 0xA0 *
 
 
 /* Initialize simcard interface */
-void calypso_sim_init(void)
+void calypso_sim_init(void (cb)(void))
 {
 	/* Register IRQ handler and turn interrupts on */
 #if (SIM_DEBUG == 1)
 	puts("SIM: Registering interrupt handler for simcard-interface\n");
 #endif
 	irq_register_handler(IRQ_SIMCARD, &sim_irq_handler);
+  #if 1
 	irq_config(IRQ_SIMCARD, 0, 0, 0xff);
+  #else
+	irq_config(IRQ_SIMCARD, 0, 0, 1);
+  #endif
 	irq_enable(IRQ_SIMCARD);
+
+	sim_wait_cb = cb;
 }
 

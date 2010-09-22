@@ -462,6 +462,28 @@ static void l1ctl_rx_tch_mode_req(struct msgb *msg)
 	l1ctl_tx_tch_mode_conf(tch_mode);
 }
 
+#include <calypso/sim.h>
+
+void sim_apdu(uint16_t len, uint8_t *data);
+
+static void l1ctl_sim_req(struct msgb *msg)
+{
+	uint16_t len = msg->len - sizeof(struct l1ctl_hdr);
+	uint8_t *data = msg->data + sizeof(struct l1ctl_hdr);
+
+#if 1 /* for debugging only */
+	{
+		int i;
+		printf("SIM Request (%u): ", len);
+		for (i = 0; i < len; i++)
+			printf("%02x ", data[i]);
+		puts("\n");
+	}
+#endif
+
+   sim_apdu(len, data);
+}
+
 /* callback from SERCOMM when L2 sends a message to L1 */
 static void l1a_l23_rx_cb(uint8_t dlci, struct msgb *msg)
 {
@@ -521,6 +543,9 @@ static void l1a_l23_rx_cb(uint8_t dlci, struct msgb *msg)
 		break;
 	case L1CTL_TCH_MODE_REQ:
 		l1ctl_rx_tch_mode_req(msg);
+		break;
+	case L1CTL_SIM_REQ:
+		l1ctl_sim_req(msg);
 		break;
 	}
 

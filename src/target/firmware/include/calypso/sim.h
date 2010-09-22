@@ -178,10 +178,10 @@ int calypso_sim_transceive(uint8_t cla, 		/* Class (in GSM context mostly 0xA0 *
 					   the status word */
 
 /* Transmission of raw data */
-int calypso_sim_receive(uint8_t *data);			/* Receive raw data through the sim interface */
+int calypso_sim_receive(uint8_t *data, uint8_t len);			/* Receive raw data through the sim interface */
 int calypso_sim_transmit(uint8_t *data, int length);	/* Transmit raw data through the sim interface */
 
-void calypso_sim_init(void);				/* Initialize simcard interface */
+void calypso_sim_init(void (cb)(void));				/* Initialize simcard interface */
 
 
 /* Known Bugs:
