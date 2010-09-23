@@ -189,12 +189,29 @@ static int last_timestamp;
 
 static inline void check_lost_frame(void)
 {
+	static int last_ts = -1;
 	int diff, timestamp = hwtimer_read(1);
 
 	if (last_timestamp < timestamp)
 		last_timestamp += (4*TIMER_TICKS_PER_TDMA);
 
 	diff = last_timestamp - timestamp;
+
+	/* TS change compensation */
+	if (l1s.dedicated.type) {
+		if (l1s.dedicated.tn < last_ts) {
+			int ediff = ((8 - last_ts + l1s.dedicated.tn) * TIMER_TICKS_PER_TDMA) >> 3;
+			printf("TS Chg: %d -> %d | %d %d\n",
+				last_ts, l1s.dedicated.tn, diff, ediff);
+
+	//		if (((ediff - 2) < diff) && ((ediff + 2) > diff)) {
+				puts("ADV !\n");
+				l1s.current_time = l1s.next_time;
+				l1s_time_inc(&l1s.next_time, 1);
+	//		}
+		}
+		last_ts = l1s.dedicated.tn;
+	}
 
 	/* allow for a bit of jitter */
 	if (diff < TIMER_TICKS_PER_TDMA - TIMER_TICK_JITTER ||
