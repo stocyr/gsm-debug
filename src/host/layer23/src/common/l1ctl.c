@@ -725,6 +725,36 @@ static int rx_l1_tch_mode_conf(struct osmocom_ms *ms, struct msgb *msg)
 	return 0;
 }
 
+/* Receive L1CTL_VOICE_IND (Voice Indication from L1) */
+static int rx_l1_voice_ind(struct osmocom_ms *ms, struct msgb *msg)
+{
+	struct l1ctl_info_dl *dl;
+	struct l1ctl_voice_ind *vi;
+
+	/* Header handling */
+	dl = (struct l1ctl_info_dl *) msg->l1h;
+	msg->l2h = dl->payload;
+	vi = (struct l1ctl_voice_ind *) msg->l2h;
+
+	LOGP(DL1C, LOGL_INFO, "VOICE IND\n");
+
+	{
+		static FILE *out = NULL;
+		int i;
+
+		if (!out)
+			out = fopen("voice.raw", "wb");
+
+		fwrite(vi->data, 33, 1, out);
+
+		for (i=0; i<33; i++)
+			printf("%02x ", vi->data[i]);
+		printf("\n");
+	}
+
+	return 0;
+}
+
 /* Receive incoming data from L1 using L1CTL format */
 int l1ctl_recv(struct osmocom_ms *ms, struct msgb *msg)
 {
@@ -780,6 +810,10 @@ int l1ctl_recv(struct osmocom_ms *ms, struct msgb *msg)
 		break;
 	case L1CTL_SIM_CONF:
 		rc = rx_l1_sim_conf(ms, msg);
+		break;
+	case L1CTL_VOICE_IND:
+		rc = rx_l1_voice_ind(ms, msg);
+		msgb_free(msg);
 		break;
 	default:
 		LOGP(DL1C, LOGL_ERROR, "Unknown MSG: %u\n", l1h->msg_type);

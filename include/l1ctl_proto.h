@@ -51,6 +51,9 @@ enum {
 	L1CTL_SIM_CONF,
 	L1CTL_TCH_MODE_REQ,
 	L1CTL_TCH_MODE_CONF,
+	L1CTL_VOICE_REQ,
+	L1CTL_VOICE_CONF,
+	L1CTL_VOICE_IND,
 };
 
 enum ccch_mode {
@@ -118,6 +121,11 @@ struct l1ctl_tch_mode_conf {
 /* data on the CCCH was found. This is following the header */
 struct l1ctl_data_ind {
 	uint8_t data[23];
+} __attribute__((packed));
+
+/* voice data from network */
+struct l1ctl_voice_ind {
+	uint8_t data[33];
 } __attribute__((packed));
 
 /*
@@ -253,6 +261,11 @@ enum l1ctl_reset_type {
 struct l1ctl_reset {
 	uint8_t type;
 	uint8_t pad[3];
+} __attribute__((packed));
+
+/* voice data to network */
+struct l1ctl_voice_req {
+	uint8_t data[33];
 } __attribute__((packed));
 
 #endif /* __L1CTL_PROTO_H__ */

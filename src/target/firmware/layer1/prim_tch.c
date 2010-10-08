@@ -278,6 +278,29 @@ static int l1s_tch_resp(__unused uint8_t p1, __unused uint8_t p2, uint16_t p3)
 		traffic_buf = tch_sub ? dsp_api.ndb->a_dd_1 : dsp_api.ndb->a_dd_0;
 
 		if (traffic_buf[0] & (1<<B_BLUD)) {
+
+			if (!(dsp_api.ndb->a_dd_0[0] & (1<<B_BFI))) {
+				int i,j;
+
+				/* TCH/F data */
+				struct msgb *msg = l1ctl_msgb_alloc(L1CTL_VOICE_IND);
+
+				struct l1ctl_info_dl *dl = (struct l1ctl_info_dl *) msgb_put(msg, sizeof(*dl));
+				struct l1ctl_voice_ind *vi = (struct l1ctl_voice_ind *) msgb_put(msg, sizeof(*vi));
+
+				/* FIXME fill dl */
+
+				for (j = 0,i = 3; j < 32; j+=2,i++) {
+					uint16_t w = dsp_api.ndb->a_dd_0[i];
+					vi->data[j  ] = (w >> 8) & 0xff;
+					vi->data[j+1] =  w & 0xff;
+				}
+				vi->data[32] = (dsp_api.ndb->a_dd_0[19] >> 8) & 0xff;
+
+
+				l1_queue_for_l2(msg);
+			}
+
 			/* Reset traffic buffer header in NDB (needed by DSP) */
 			traffic_buf[0] = 0;
 			traffic_buf[2] = 0xffff;
