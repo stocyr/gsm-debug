@@ -77,6 +77,9 @@ struct l1s_state {
 	int8_t		ta;
 	uint8_t		tx_power;
 
+	/* RX parameters */
+	int16_t		rx_gain;
+
 	/* TCH */
 	uint8_t		tch_mode;
 	uint8_t		tch_sync;
@@ -142,6 +145,14 @@ struct l1s_state {
 			struct l1s_h1 st_h1;
 		};
 	} dedicated;
+
+	struct {
+		uint8_t n;
+		uint8_t pos;
+		uint8_t running;
+		uint16_t band_arfcn[64];
+		uint8_t	level[64];
+	} meas;
 };
 
 extern struct l1s_state l1s;

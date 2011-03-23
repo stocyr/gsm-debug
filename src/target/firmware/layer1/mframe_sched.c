@@ -50,16 +50,19 @@ struct mframe_sched_item {
 #define NB_QUAD_FH_DL	NB_QUAD_DL
 #define NB_QUAD_UL	nb_sched_set_ul
 #define NB_QUAD_FH_UL	NB_QUAD_UL
+#define NB_MEAS		meas_sched_set
 
 /* BCCH Normal */
 static const struct mframe_sched_item mf_bcch_norm[] = {
 	{ .sched_set = NB_QUAD_DL, .modulo = 51, .frame_nr = 2 },
+	{ .sched_set = NB_MEAS   , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NULL }
 };
 
 /* BCCH Extended */
 static const struct mframe_sched_item mf_bcch_ext[] = {
 	{ .sched_set = NB_QUAD_DL, .modulo = 51, .frame_nr = 6 },
+	{ .sched_set = NB_MEAS   , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NULL }
 };
 
@@ -74,6 +77,7 @@ static const struct mframe_sched_item mf_ccch[] = {
 	{ .sched_set = NB_QUAD_DL, .modulo = 51, .frame_nr = 36 },
 	{ .sched_set = NB_QUAD_DL, .modulo = 51, .frame_nr = 42 },
 	{ .sched_set = NB_QUAD_DL, .modulo = 51, .frame_nr = 46 },
+	{ .sched_set = NB_MEAS   , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NULL }
 };
 
@@ -82,6 +86,7 @@ static const struct mframe_sched_item mf_ccch_comb[] = {
 	{ .sched_set = NB_QUAD_DL, .modulo = 51, .frame_nr = 6 },
 	{ .sched_set = NB_QUAD_DL, .modulo = 51, .frame_nr = 12 },
 	{ .sched_set = NB_QUAD_DL, .modulo = 51, .frame_nr = 16 },
+	{ .sched_set = NB_MEAS   , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NULL }
 };
 
@@ -89,6 +94,7 @@ static const struct mframe_sched_item mf_ccch_comb[] = {
 static const struct mframe_sched_item mf_sdcch4_0[] = {
 	{ .sched_set = NB_QUAD_DL, .modulo = 51, .frame_nr = 22 },
 	{ .sched_set = NB_QUAD_UL, .modulo = 51, .frame_nr = 22+15 },
+	{ .sched_set = NB_MEAS   , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NB_QUAD_DL, .modulo = 2*51, .frame_nr = 42,
 	  .flags = MF_F_SACCH },
 	{ .sched_set = NB_QUAD_UL, .modulo = 2*51, .frame_nr = 42+15,
@@ -98,6 +104,7 @@ static const struct mframe_sched_item mf_sdcch4_0[] = {
 static const struct mframe_sched_item mf_sdcch4_1[] = {
 	{ .sched_set = NB_QUAD_DL, .modulo = 51, .frame_nr = 26 },
 	{ .sched_set = NB_QUAD_UL, .modulo = 51, .frame_nr = 26+15 },
+	{ .sched_set = NB_MEAS   , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NB_QUAD_DL, .modulo = 2*51, .frame_nr = 46,
 	  .flags = MF_F_SACCH },
 	{ .sched_set = NB_QUAD_UL, .modulo = 2*51, .frame_nr = 46+15,
@@ -107,6 +114,7 @@ static const struct mframe_sched_item mf_sdcch4_1[] = {
 static const struct mframe_sched_item mf_sdcch4_2[] = {
 	{ .sched_set = NB_QUAD_DL, .modulo = 51, .frame_nr = 32 },
 	{ .sched_set = NB_QUAD_UL, .modulo = 51, .frame_nr = 32+15 },
+	{ .sched_set = NB_MEAS   , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NB_QUAD_DL, .modulo = 2*51, .frame_nr = 51+42,
 	  .flags = MF_F_SACCH },
 	{ .sched_set = NB_QUAD_UL, .modulo = 2*51, .frame_nr = 51+42+15,
@@ -116,6 +124,7 @@ static const struct mframe_sched_item mf_sdcch4_2[] = {
 static const struct mframe_sched_item mf_sdcch4_3[] = {
 	{ .sched_set = NB_QUAD_DL, .modulo = 51, .frame_nr = 36 },
 	{ .sched_set = NB_QUAD_UL, .modulo = 51, .frame_nr = 36+15 },
+	{ .sched_set = NB_MEAS   , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NB_QUAD_DL, .modulo = 2*51, .frame_nr = 51+46,
 	  .flags = MF_F_SACCH },
 	{ .sched_set = NB_QUAD_UL, .modulo = 2*51, .frame_nr = 51+46+15,
@@ -127,6 +136,7 @@ static const struct mframe_sched_item mf_sdcch4_3[] = {
 static const struct mframe_sched_item mf_sdcch8_0[] = {
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 51, .frame_nr = 0 },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 51, .frame_nr = 0+15 },
+	{ .sched_set = NB_MEAS      , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 2*51, .frame_nr = 32,
 	  .flags = MF_F_SACCH },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 2*51, .frame_nr = 32+15,
@@ -136,6 +146,7 @@ static const struct mframe_sched_item mf_sdcch8_0[] = {
 static const struct mframe_sched_item mf_sdcch8_1[] = {
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 51, .frame_nr = 4 },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 51, .frame_nr = 4+15 },
+	{ .sched_set = NB_MEAS      , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 2*51, .frame_nr = 36,
 	  .flags = MF_F_SACCH },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 2*51, .frame_nr = 36+15,
@@ -145,6 +156,7 @@ static const struct mframe_sched_item mf_sdcch8_1[] = {
 static const struct mframe_sched_item mf_sdcch8_2[] = {
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 51, .frame_nr = 8 },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 51, .frame_nr = 8+15 },
+	{ .sched_set = NB_MEAS      , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 2*51, .frame_nr = 40,
 	  .flags = MF_F_SACCH },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 2*51, .frame_nr = 40+15,
@@ -154,6 +166,7 @@ static const struct mframe_sched_item mf_sdcch8_2[] = {
 static const struct mframe_sched_item mf_sdcch8_3[] = {
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 51, .frame_nr = 12 },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 51, .frame_nr = 12+15 },
+	{ .sched_set = NB_MEAS      , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 2*51, .frame_nr = 44,
 	  .flags = MF_F_SACCH },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 2*51, .frame_nr = 44+15,
@@ -163,6 +176,7 @@ static const struct mframe_sched_item mf_sdcch8_3[] = {
 static const struct mframe_sched_item mf_sdcch8_4[] = {
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 51, .frame_nr = 16 },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 51, .frame_nr = 16+15 },
+	{ .sched_set = NB_MEAS      , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 2*51, .frame_nr = 51+32,
 	  .flags = MF_F_SACCH },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 2*51, .frame_nr = 51+32+15,
@@ -172,6 +186,7 @@ static const struct mframe_sched_item mf_sdcch8_4[] = {
 static const struct mframe_sched_item mf_sdcch8_5[] = {
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 51, .frame_nr = 20 },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 51, .frame_nr = 20+15 },
+	{ .sched_set = NB_MEAS      , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 2*51, .frame_nr = 51+36,
 	  .flags = MF_F_SACCH },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 2*51, .frame_nr = 51+36+15,
@@ -181,6 +196,7 @@ static const struct mframe_sched_item mf_sdcch8_5[] = {
 static const struct mframe_sched_item mf_sdcch8_6[] = {
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 51, .frame_nr = 24 },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 51, .frame_nr = 24+15 },
+	{ .sched_set = NB_MEAS      , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 2*51, .frame_nr = 51+40,
 	  .flags = MF_F_SACCH },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 2*51, .frame_nr = 51+40+15,
@@ -190,6 +206,7 @@ static const struct mframe_sched_item mf_sdcch8_6[] = {
 static const struct mframe_sched_item mf_sdcch8_7[] = {
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 51, .frame_nr = 28 },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 51, .frame_nr = 28+15 },
+	{ .sched_set = NB_MEAS      , .modulo = 51, .frame_nr = 50 },
 	{ .sched_set = NB_QUAD_FH_DL, .modulo = 2*51, .frame_nr = 51+44,
 	  .flags = MF_F_SACCH },
 	{ .sched_set = NB_QUAD_FH_UL, .modulo = 2*51, .frame_nr = 51+44+15,
@@ -198,9 +215,10 @@ static const struct mframe_sched_item mf_sdcch8_7[] = {
 };
 
 /* TCH */
-#define TCH	tch_sched_set
-#define TCH_A	tch_a_sched_set
-#define TCH_D	tch_d_sched_set
+#define TCH		tch_sched_set
+#define TCH_A		tch_a_sched_set
+#define TCH_D		tch_d_sched_set
+#define TCH_PM		meas_sched_set
 
 static const struct mframe_sched_item mf_tch_f_even[] = {
 	{ .sched_set = TCH,   .modulo = 13, .frame_nr =  0 },
@@ -217,6 +235,7 @@ static const struct mframe_sched_item mf_tch_f_even[] = {
 	{ .sched_set = TCH,   .modulo = 13, .frame_nr = 11 },
 	{ .sched_set = TCH_A, .modulo = 26, .frame_nr = 12,
 	  .flags = MF_F_SACCH },
+	{ .sched_set = TCH_PM,.modulo = 26, .frame_nr = 25 },
 	{ .sched_set = NULL }
 };
 
@@ -233,6 +252,7 @@ static const struct mframe_sched_item mf_tch_f_odd[] = {
 	{ .sched_set = TCH,   .modulo = 13, .frame_nr =  9 },
 	{ .sched_set = TCH,   .modulo = 13, .frame_nr = 10 },
 	{ .sched_set = TCH,   .modulo = 13, .frame_nr = 11 },
+	{ .sched_set = TCH_PM,.modulo = 26, .frame_nr = 12 },
 	{ .sched_set = TCH_A, .modulo = 26, .frame_nr = 25,
 	  .flags = MF_F_SACCH },
 	{ .sched_set = NULL }

@@ -277,6 +277,7 @@ static void l1ctl_rx_dm_rel_req(struct msgb *msg)
 	dsp_load_ciph_param(0, NULL);
 	l1a_tch_mode_set(GSM48_CMODE_SIGN);
 	audio_set_enabled(0);
+	l1s.meas.n = 0;
 }
 
 /* receive a L1CTL_PARAM_REQ from L23 */
@@ -484,6 +485,24 @@ static void l1ctl_sim_req(struct msgb *msg)
    sim_apdu(len, data);
 }
 
+/* receive a L1CTL_MEAS_REQ from L23 */
+static void l1ctl_rx_meas_req(struct msgb *msg)
+{
+	struct l1ctl_hdr *l1h = (struct l1ctl_hdr *) msg->data;
+	struct l1ctl_meas_req *meas_req = (struct l1ctl_meas_req *) l1h->data;
+	int i;
+
+	/* reset list in order to prevent race condition */
+	l1s.meas.n = 0; /* atomic */
+	/* now reset pointer and fill list */
+	l1s.meas.pos = 0;
+	l1s.meas.running = 0;
+	for (i = 0; i < meas_req->n; i++)
+		l1s.meas.band_arfcn[i] = ntohs(meas_req->band_arfcn[i]);
+	printf("L1CTL_MEAS_REQ new list with %u entries\n", meas_req->n);
+	l1s.meas.n = meas_req->n; /* atomic */
+}
+
 /* callback from SERCOMM when L2 sends a message to L1 */
 static void l1a_l23_rx_cb(uint8_t dlci, struct msgb *msg)
 {
@@ -546,6 +565,9 @@ static void l1a_l23_rx_cb(uint8_t dlci, struct msgb *msg)
 		break;
 	case L1CTL_SIM_REQ:
 		l1ctl_sim_req(msg);
+		break;
+	case L1CTL_MEAS_REQ:
+		l1ctl_rx_meas_req(msg);
 		break;
 	}
 
