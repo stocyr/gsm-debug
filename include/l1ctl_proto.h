@@ -54,6 +54,8 @@ enum {
 	L1CTL_VOICE_REQ,
 	L1CTL_VOICE_CONF,
 	L1CTL_VOICE_IND,
+	L1CTL_MEAS_REQ,
+	L1CTL_MEAS_IND,
 };
 
 enum ccch_mode {
@@ -266,6 +268,18 @@ struct l1ctl_reset {
 /* voice data to network */
 struct l1ctl_voice_req {
 	uint8_t data[33];
+} __attribute__((packed));
+
+struct l1ctl_meas_req {
+	uint8_t n;
+	uint8_t padding[1];
+	uint16_t band_arfcn[64];
+} __attribute__((packed));
+
+/* measurement results */
+struct l1ctl_meas_ind {
+	uint16_t band_arfcn;
+	uint8_t pm[2];
 } __attribute__((packed));
 
 #endif /* __L1CTL_PROTO_H__ */
