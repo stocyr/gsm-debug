@@ -755,6 +755,44 @@ static int rx_l1_voice_ind(struct osmocom_ms *ms, struct msgb *msg)
 	return 0;
 }
 
+/* Transmit L1CTL_MEAS_REQ */
+int l1ctl_tx_meas_req(struct osmocom_ms *ms, int num, uint16_t *arfcn)
+{
+	struct msgb *msg;
+	struct l1ctl_meas_req *meas;
+	int i;
+
+	msg = osmo_l1_alloc(L1CTL_MEAS_REQ);
+	if (!msg)
+		return -1;
+
+	LOGP(DL1C, LOGL_INFO, "Tx MEAS Req (num %u)\n", num);
+	meas = (struct l1ctl_meas_req *) msgb_put(msg, sizeof(*meas));
+	meas->n = num;
+	for (i = 0; i < num; i++)
+		meas->band_arfcn[i] = htons(*arfcn++);
+
+	return osmo_send_l1(ms, msg);
+}
+
+/* Receive L1CTL_MEAS_IND */
+static int rx_l1_meas_ind(struct osmocom_ms *ms, struct msgb *msg)
+{
+	struct l1ctl_meas_ind *meas;
+
+	for (meas = (struct l1ctl_meas_ind *) msg->l1h;
+	     (uint8_t *) meas < msg->tail; meas++) {
+		struct osmobb_meas_ind mi;
+		DEBUGP(DL1C, "MEAS IND: ARFCN: %4u RxLev: %3d %3d\n",
+			ntohs(meas->band_arfcn), meas->pm[0], meas->pm[1]);
+		mi.band_arfcn = ntohs(meas->band_arfcn);
+		mi.rx_lev = meas->pm[0];
+		mi.ms = ms;
+		dispatch_signal(SS_L1CTL, S_L1CTL_MEAS_IND, &mi);
+	}
+	return 0;
+}
+
 /* Receive incoming data from L1 using L1CTL format */
 int l1ctl_recv(struct osmocom_ms *ms, struct msgb *msg)
 {
@@ -814,6 +852,9 @@ int l1ctl_recv(struct osmocom_ms *ms, struct msgb *msg)
 	case L1CTL_VOICE_IND:
 		rc = rx_l1_voice_ind(ms, msg);
 		msgb_free(msg);
+		break;
+	case L1CTL_MEAS_IND:
+		rc = rx_l1_meas_ind(ms, msg);
 		break;
 	default:
 		LOGP(DL1C, LOGL_ERROR, "Unknown MSG: %u\n", l1h->msg_type);

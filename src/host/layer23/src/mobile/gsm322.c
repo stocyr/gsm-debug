@@ -2384,6 +2384,7 @@ int gsm322_l1_signal(unsigned int subsys, unsigned int signal,
 	struct gsm322_cellsel *cs;
 	struct osmobb_meas_res *mr;
 	struct osmobb_fbsb_res *fr;
+	struct osmobb_meas_ind *mi;
 	int i;
 	int8_t rxlev;
 
@@ -2493,6 +2494,11 @@ int gsm322_l1_signal(unsigned int subsys, unsigned int signal,
 			mobile_exit(ms, 1);
 			return 0;
 		}
+		break;
+	case S_L1CTL_MEAS_IND:
+		mi = signal_data;
+		ms = mi->ms;
+		gsm48_rr_meas_ind(ms, mi->band_arfcn, mi->rx_lev);
 		break;
 	}
 

@@ -1131,6 +1131,8 @@ static void config_write_ms(struct vty *vty, struct osmocom_ms *ms)
 				abbrev->number, (abbrev->name[0]) ? " " : "",
 				abbrev->name, VTY_NEWLINE);
 	}
+	vty_out(vty, " %sreport-neighbour-cells%s",
+		(set->report_nb) ? "" : "no ", VTY_NEWLINE);
 	vty_out(vty, " support%s", VTY_NEWLINE);
 	SUP_WRITE(sms_ptp, "sms");
 	SUP_WRITE(a5_1, "a5/1");
@@ -1735,6 +1737,28 @@ DEFUN(cfg_no_abbrev, cfg_ms_no_abbrev_cmd, "no abbrev [ABBREVIATION]",
 			argv[0], VTY_NEWLINE);
 		return CMD_WARNING;
 	}
+
+	return CMD_SUCCESS;
+}
+
+DEFUN(cfg_report_nb, cfg_ms_report_nb_cmd, "report-neighbour-cells",
+	"Enable reporting of neighbour cell measurements")
+{
+	struct osmocom_ms *ms = vty->index;
+	struct gsm_settings *set = &ms->settings;
+
+	set->report_nb = 1;
+
+	return CMD_SUCCESS;
+}
+
+DEFUN(cfg_no_report_nb, cfg_ms_no_report_nb_cmd, "no report-neighbour-cells",
+	NO_STR "Disable reporting of neighbour cell measurements")
+{
+	struct osmocom_ms *ms = vty->index;
+	struct gsm_settings *set = &ms->settings;
+
+	set->report_nb = 0;
 
 	return CMD_SUCCESS;
 }
@@ -2355,6 +2379,8 @@ int ms_vty_init(void)
 	install_element(MS_NODE, &cfg_ms_abbrev_cmd);
 	install_element(MS_NODE, &cfg_ms_no_abbrev_cmd);
 	install_element(MS_NODE, &cfg_ms_testsim_cmd);
+	install_element(MS_NODE, &cfg_ms_report_nb_cmd);
+	install_element(MS_NODE, &cfg_ms_no_report_nb_cmd);
 	install_element(MS_NODE, &cfg_ms_support_cmd);
 	install_node(&support_node, config_write_dummy);
 	install_default(SUPPORT_NODE);

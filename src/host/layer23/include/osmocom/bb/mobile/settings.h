@@ -47,6 +47,7 @@ struct gsm_settings {
 	uint8_t			stick;
 	uint16_t		stick_arfcn;
 	uint8_t			no_lupd;
+	uint8_t			report_nb;
 
 	/* supported by configuration */
 	uint8_t			cc_dtmf;

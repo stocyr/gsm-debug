@@ -62,4 +62,7 @@ int l1ctl_tx_pm_req_range(struct osmocom_ms *ms, uint16_t arfcn_from,
 
 int l1ctl_tx_sim_req(struct osmocom_ms *ms, uint8_t *data, uint16_t length);
 
+/* Transmit L1CTL_MEAS_REQ */
+int l1ctl_tx_meas_req(struct osmocom_ms *ms, int num, uint16_t *arfcn);
+
 #endif

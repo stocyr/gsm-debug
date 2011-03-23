@@ -1592,11 +1592,14 @@ static int gsm48_new_sysinfo(struct osmocom_ms *ms, uint8_t type)
 				LOGP(DRR, LOGL_NOTICE, "SI5* report arfcn %d\n",
 					i & 1023);
 				rrmeas->nc_arfcn[n] = i & 1023;
-				rrmeas->nc_rxlev[n] = -128;
+				rrmeas->nc_rxlev[n] = -128; /* no value */
 				n++;
 			}
 		}
 		rrmeas->nc_num = n;
+
+		/* sent measurement request to layer 1 */
+		l1ctl_tx_meas_req(ms, rrmeas->nc_num, rrmeas->nc_arfcn);
 	}
 
 	/* send sysinfo event to other layers */
@@ -2531,12 +2534,37 @@ static int gsm48_rr_rx_add_ass(struct osmocom_ms *ms, struct msgb *msg)
  * measturement reports
  */
 
+/* get measurement results */
+int gsm48_rr_meas_ind(struct osmocom_ms *ms, uint16_t arfcn, uint8_t rxlev)
+{
+	struct gsm48_rr_meas *rrmeas = &ms->rrlayer.meas;
+	int i;
+
+	for (i = 0; i < rrmeas->nc_num; i++) {
+		if (arfcn != rrmeas->nc_arfcn[i])
+			continue;
+		rrmeas->nc_rxlev[i] = rxlev - 110;
+#warning apply gsm_print_arfcn after merging with quadband support
+		LOGP(DRR, LOGL_NOTICE, "Measurement result for ARFCN %d: %d\n",
+			arfcn, rrmeas->nc_rxlev[i]);
+
+		return 0;
+	}
+#warning apply gsm_print_arfcn after merging with quadband support
+	LOGP(DRR, LOGL_NOTICE, "Measurement result for ARFCN %d not "
+		"requested. (not a bug)\n", arfcn);
+
+	return 0;
+}
+
+/* send measurement report */
 static int gsm48_rr_tx_meas_rep(struct osmocom_ms *ms)
 {
 	struct gsm48_rrlayer *rr = &ms->rrlayer;
 	struct gsm48_sysinfo *s = ms->cellsel.si;
 	struct rx_meas_stat *meas = &rr->ms->meas;
 	struct gsm48_rr_meas *rrmeas = &rr->meas;
+	struct gsm_settings *set = &ms->settings;
 	struct msgb *nmsg;
 	struct gsm48_hdr *gh;
 	struct gsm48_meas_res *mr;
@@ -2572,7 +2600,7 @@ static int gsm48_rr_tx_meas_rep(struct osmocom_ms *ms)
 	memset(&rxlev_nc, 0, sizeof(rxlev_nc));
 	memset(&bsic_nc, 0, sizeof(bsic_nc));
 	memset(&bcch_f_nc, 0, sizeof(bcch_f_nc));
-	if (rep_valid) {
+	if (rep_valid && set->report_nb) {
 		int8_t strongest, current;
 		uint8_t ncc;
 		int i, index;
@@ -2667,10 +2695,17 @@ static int gsm48_rr_tx_meas_rep(struct osmocom_ms *ms)
 
 	LOGP(DRR, LOGL_INFO, "MEAS REP: pwr=%d TA=%d meas-invalid=%d "
 		"rxlev-full=%d rxlev-sub=%d rxqual-full=%d rxqual-sub=%d "
-		"dtx %d ba %d no-ncell-n %d\n", tx_power, ta, mr->meas_valid,
+		"dtx %d ba %d no-ncell-n %d nc %d=%d %d=%d %d=%d %d=%d %d=%d "
+		"%d=%d\n", tx_power, ta, mr->meas_valid,
 		mr->rxlev_full - 110, mr->rxlev_sub - 110,
 		mr->rxqual_full, mr->rxqual_sub, mr->dtx_used, mr->ba_used,
-		(mr->no_nc_n_hi << 2) | mr->no_nc_n_lo);
+		(mr->no_nc_n_hi << 2) | mr->no_nc_n_lo,
+		bcch_f_nc[0], rxlev_nc[0] - 110,
+		bcch_f_nc[1], rxlev_nc[1] - 110,
+		bcch_f_nc[2], rxlev_nc[2] - 110,
+		bcch_f_nc[3], rxlev_nc[3] - 110,
+		bcch_f_nc[4], rxlev_nc[4] - 110,
+		bcch_f_nc[5], rxlev_nc[5] - 110);
 
 	msgb_tv16_push(nmsg, RSL_IE_L3_INFO,
 		nmsg->tail - (uint8_t *)msgb_l3(nmsg));
