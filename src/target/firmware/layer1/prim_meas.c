@@ -77,13 +77,26 @@ static int l1s_meas_cmd(uint8_t num_meas,
 static int l1s_meas_resp(uint8_t num_meas, __unused uint8_t p2,
 		       uint16_t arfcn)
 {
-	uint16_t level;
+	uint16_t dbm;
+	uint8_t level;
 
 	if (l1s.meas.n == 0 || !l1s.meas.running)
 		return 0;
 
-	level = (uint16_t) ((dsp_api.db_r->a_pm[0] & 0xffff) >> 3);
-	l1s.meas.level[l1s.meas.pos] = dbm2rxlev(agc_inp_dbm8_by_pm(level)/8);
+	dbm = (uint16_t) ((dsp_api.db_r->a_pm[0] & 0xffff) >> 3);
+	level = dbm2rxlev(agc_inp_dbm8_by_pm(dbm)/8);
+
+	/* do a second read, because every second value is 0 */
+	if (!l1s.meas.second) {
+		l1s.meas.second = 1;
+		l1s.meas.level[l1s.meas.pos] = level;
+		goto out;
+	}
+	l1s.meas.second = 0;
+
+	/* take the higer value of both measurements */
+	if (level > l1s.meas.level[l1s.meas.pos])
+		l1s.meas.level[l1s.meas.pos] = level;
 
 	printf("measurement result of %d on pos %u at ARFCN %u\n", l1s.meas.level[l1s.meas.pos], l1s.meas.pos, l1s.meas.band_arfcn[l1s.meas.pos]);
 	if (++l1s.meas.pos >= l1s.meas.n) {
@@ -108,6 +121,7 @@ static int l1s_meas_resp(uint8_t num_meas, __unused uint8_t p2,
 		l1_queue_for_l2(msg);
 	}
 
+out:
 	/* set previous RF gain */
 	rffe_set_gain(l1s.rx_gain, CAL_DSP_TGT_BB_LVL);
 

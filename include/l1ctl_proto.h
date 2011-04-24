@@ -64,6 +64,12 @@ enum ccch_mode {
 	CCCH_MODE_COMBINED,
 };
 
+enum neigh_mode {
+	NEIGH_MODE_NONE = 0,
+	NEIGH_MODE_PM,
+	NEIGH_MODE_SB,
+};
+
 /*
  * NOTE: struct size. We do add manual padding out of the believe
  * that it will avoid some unaligned access.

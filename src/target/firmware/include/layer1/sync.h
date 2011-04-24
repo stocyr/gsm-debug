@@ -164,7 +164,7 @@ struct l1s_state {
 	} dedicated;
 
 	struct {
-		uint8_t n;
+		uint8_t n, second;
 		uint8_t pos;
 		uint8_t running;
 		uint16_t band_arfcn[64];
