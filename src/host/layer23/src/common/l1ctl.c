@@ -747,9 +747,9 @@ static int rx_l1_voice_ind(struct osmocom_ms *ms, struct msgb *msg)
 
 		fwrite(vi->data, 33, 1, out);
 
-		for (i=0; i<33; i++)
-			printf("%02x ", vi->data[i]);
-		printf("\n");
+//		for (i=0; i<33; i++)
+//			printf("%02x ", vi->data[i]);
+//		printf("\n");
 	}
 
 	return 0;

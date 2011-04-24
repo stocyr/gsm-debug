@@ -277,6 +277,22 @@ static void gsm322_unselect_cell(struct gsm322_cellsel *cs)
 	cs->sel_mcc = cs->sel_mnc = cs->sel_lac = cs->sel_id = 0;
 }
 
+#warning CHANGE THAT TO INDEX (and check sel_index) AFTER MERGING WITH QUADBAND SUPPORT
+void gsm322_handover(struct gsm322_cellsel *cs, uint16_t arfcn)
+{
+	gsm322_unselect_cell(cs);
+	/* select new cell as given */
+	cs->selected = 1;
+	cs->sel_arfcn = cs->arfcn = arfcn;
+	if (cs->list[cs->arfcn].sysinfo)
+		memset(cs->list[cs->arfcn].sysinfo, 0,
+			sizeof(struct gsm48_sysinfo));
+	else
+		cs->list[cs->arfcn].sysinfo = talloc_zero(l23_ctx,
+						struct gsm48_sysinfo);
+	cs->si = cs->list[cs->arfcn].sysinfo;
+}
+
 /* print to DCS logging */
 static void print_dcs(void *priv, const char *fmt, ...)
 {
@@ -2068,6 +2084,14 @@ static int gsm322_c_camp_sysinfo_bcch(struct osmocom_ms *ms, struct msgb *msg)
 	struct gsm322_msg *gm = (struct gsm322_msg *) msg->data;
 	struct msgb *nmsg;
 
+	/* after handover use sel_xxx from sysinfo */
+	if (!cs->sel_mcc && s->mcc) {
+		LOGP(DCS, LOGL_INFO, "Got new cell ID after HO.\n");
+		cs->sel_mcc = s->mcc;
+		cs->sel_mnc = s->mnc;
+		cs->sel_lac = s->lac;
+		cs->sel_id = s->cell_id;
+	}
 #if 0
 	if (rr->state != GSM48_RR_ST_IDLE) {
 		LOGP(DCS, LOGL_INFO, "Ignoring in dedicated mode.\n");
@@ -2146,13 +2170,15 @@ static int gsm322_c_camp_sysinfo_bcch(struct osmocom_ms *ms, struct msgb *msg)
 	}
 
 	/* check if MCC, MNC, LAC, cell ID changes */
-	if (cs->sel_mcc != s->mcc || cs->sel_mnc != s->mnc
-	 || cs->sel_lac != s->lac) {
+	if (cs->sel_mcc
+	 && (cs->sel_mcc != s->mcc || cs->sel_mnc != s->mnc
+	  || cs->sel_lac != s->lac)) {
 		LOGP(DCS, LOGL_NOTICE, "Cell changes location area. "
 			"This is not good!\n");
 		goto trigger_resel;
 	}
-	if (cs->sel_id != s->cell_id) {
+	if (cs->sel_mcc
+	 && (cs->sel_id != s->cell_id)) {
 		LOGP(DCS, LOGL_NOTICE, "Cell changes cell ID. "
 			"This is not good!\n");
 		goto trigger_resel;

@@ -198,6 +198,7 @@ extern const char *plmn_m_state_names[];
 extern const char *cs_state_names[];
 int gsm322_l1_signal(unsigned int subsys, unsigned int signal,
 		     void *handler_data, void *signal_data);
+void gsm322_handover(struct gsm322_cellsel *cs, uint16_t arfcn);
 
 char *gsm_print_rxlev(uint8_t rxlev); 
 

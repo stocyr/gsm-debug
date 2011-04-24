@@ -2538,12 +2538,14 @@ static int gsm48_rr_rx_add_ass(struct osmocom_ms *ms, struct msgb *msg)
 int gsm48_rr_meas_ind(struct osmocom_ms *ms, uint16_t arfcn, uint8_t rxlev)
 {
 	struct gsm48_rr_meas *rrmeas = &ms->rrlayer.meas;
+	struct gsm48_sysinfo *s = ms->cellsel.si;
 	int i;
 
 	for (i = 0; i < rrmeas->nc_num; i++) {
 		if (arfcn != rrmeas->nc_arfcn[i])
 			continue;
 		rrmeas->nc_rxlev[i] = rxlev - 110;
+		rrmeas->nc_bsic[i] = s->bsic;
 #warning apply gsm_print_arfcn after merging with quadband support
 		LOGP(DRR, LOGL_NOTICE, "Measurement result for ARFCN %d: %d\n",
 			arfcn, rrmeas->nc_rxlev[i]);
@@ -2601,7 +2603,7 @@ static int gsm48_rr_tx_meas_rep(struct osmocom_ms *ms)
 	memset(&bsic_nc, 0, sizeof(bsic_nc));
 	memset(&bcch_f_nc, 0, sizeof(bcch_f_nc));
 	if (rep_valid && set->report_nb) {
-		int8_t strongest, current;
+		int16_t weight, current, strongest;
 		uint8_t ncc;
 		int i, index;
 
@@ -2611,25 +2613,36 @@ static int gsm48_rr_tx_meas_rep(struct osmocom_ms *ms)
 
 		/* get 6 strongest measurements */
 		// FIXME: multiband report
-		strongest = 127; /* infinite */
+		strongest = 32767; /* infinite */
 		for (n = 0; n < 6; n++) {
-			current = -128; /* -infinite */
-			index = 0;
+			current = -32768; /* -infinite */
+			index = -1;
 			for (i = 0; i < rrmeas->nc_num; i++) {
-				/* only check if NCC is permitted */
+				weight = (rrmeas->nc_rxlev[i] << 8) | i;
+				/* FIXME: only check if NCC is permitted */
 				ncc = rrmeas->nc_bsic[i] >> 3;
-				if ((s->nb_ncc_permitted_si6 & (1 << ncc))
-				 && rrmeas->nc_rxlev[i] > current
-				 && rrmeas->nc_rxlev[i] < strongest) {
-					current = rrmeas->nc_rxlev[i];
+				if (rrmeas->nc_rxlev[i] >= -110
+				 && (s->nb_ncc_permitted_si6 & (1 << ncc))
+				 && weight > current
+				 && weight < strongest) {
+				 	current = weight;
 					index = i;
 				}
 			}
-			if (current == -128) /* no more found */
+			if (current == -32768) /* no more found */
 				break;
+			strongest = current;
 			rxlev_nc[n] = rrmeas->nc_rxlev[index] + 110;
 			bsic_nc[n] = rrmeas->nc_bsic[index];
 			bcch_f_nc[n] = index;
+#warning EASTERHEGG11
+	if (n == 0) {
+		serv_rxlev_full = serv_rxlev_sub = 2;
+		serv_rxqual_full = serv_rxqual_sub = 6;
+		rxlev_nc[n] = 62;
+		bsic_nc[n] = (3 << 3) | 2;
+	}
+			printf("sorted: %d, lev=%d,%d\n", bcch_f_nc[n], rxlev_nc[n]-110, rxlev_nc[n]);
 		}
 	}
 
@@ -2677,6 +2690,7 @@ static int gsm48_rr_tx_meas_rep(struct osmocom_ms *ms)
 	mr->rxlev_nc6_lo = rxlev_nc[5] & 31;
 	mr->bsic_nc1_hi = bsic_nc[0] >> 3;
 	mr->bsic_nc1_lo = bsic_nc[0] & 7;
+printf ("%d %d %d\n", mr->bsic_nc1_hi, mr->bsic_nc1_lo, bsic_nc[0]);
 	mr->bsic_nc2_hi = bsic_nc[1] >> 4;
 	mr->bsic_nc2_lo = bsic_nc[1] & 15;
 	mr->bsic_nc3_hi = bsic_nc[2] >> 5;
@@ -2849,7 +2863,8 @@ static int gsm48_rr_activate_channel(struct osmocom_ms *ms,
 	rr->dm_est = 1;
 
 	/* old SI 5/6 are not valid on a new dedicated channel */
-	s->si5 = s->si5bis = s->si5ter = s->si6 = 0;
+	if (s)
+		s->si5 = s->si5bis = s->si5ter = s->si6 = 0;
 
 	if (rr->cipher_on)
 		l1ctl_tx_crypto_req(ms, rr->cipher_type + 1, subscr->key, 8);
@@ -4233,6 +4248,8 @@ static int gsm48_rr_susp_cnf_dedicated(struct osmocom_ms *ms, struct msgb *msg)
 			gsm48_rr_tx_ass_cpl(ms, GSM48_RR_CAUSE_NORMAL);
 			break;
 		case GSM48_RR_MOD_HANDO:
+			/* we change the cell, so we reset the SI */
+			gsm322_handover(&ms->cellsel, rr->cd_now.arfcn);
 			gsm48_rr_tx_hando_cpl(ms, GSM48_RR_CAUSE_NORMAL);
 			break;
 		}
