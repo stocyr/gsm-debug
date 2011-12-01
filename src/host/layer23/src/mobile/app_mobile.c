@@ -38,6 +38,7 @@
 #include <osmocom/bb/mobile/mncc.h>
 #include <osmocom/bb/mobile/mnccms.h>
 #include <osmocom/bb/mobile/voice.h>
+#include <osmocom/bb/ui/telnet_interface.h>
 #include <osmocom/vty/telnet_interface.h>
 
 #include <osmocom/core/msgb.h>
@@ -140,6 +141,8 @@ int mobile_exit(struct osmocom_ms *ms, int force)
 		return -EBUSY;
 	}
 
+	gui_stop(ms);
+	ui_telnet_exit(&ms->gui.ui);
 	gsm322_exit(ms);
 	gsm48_mm_exit(ms);
 	gsm48_rr_exit(ms);
@@ -198,6 +201,17 @@ int mobile_init(struct osmocom_ms *ms)
 		return rc;
 	}
 #endif
+
+	if (ms->settings.ui_port) {
+		rc = ui_telnet_init(&ms->gui.ui, l23_ctx, ms->settings.ui_port);
+		if (rc < 0) {
+			fprintf(stderr, "Failed during ui_telnet_init()\n");
+			mobile_exit(ms, 1);
+			return rc;
+		}
+		printf("UI available on port %u.\n", ms->settings.ui_port);
+		gui_start(ms);
+	}
 
 	gsm_random_imei(&ms->settings);
 
@@ -340,6 +354,7 @@ int l23_app_exit(void)
 
 	osmo_gps_close();
 
+	ms_vty_exit();
 	telnet_exit();
 
 	return 0;
@@ -363,7 +378,7 @@ int l23_app_init(int (*mncc_recv)(struct osmocom_ms *ms, int, void *),
 	osmo_gps_init();
 
 	vty_init(&vty_info);
-	ms_vty_init();
+	ms_vty_init(l23_ctx);
 	dummy_conn.priv = NULL;
 	vty_reading = 1;
 	if (config_file != NULL) {

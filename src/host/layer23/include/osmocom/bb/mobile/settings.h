@@ -104,6 +104,10 @@ struct gsm_settings {
 	uint8_t			class_dtm;
 	uint8_t			dtm_mac;
 	uint8_t			dtm_egprs;
+
+	/* UI */
+	uint16_t		ui_port; /* telnet port: 0, if disabled */
+	uint32_t		status_enable; /* status display flags */
 };
 
 struct gsm_settings_abbrev {
