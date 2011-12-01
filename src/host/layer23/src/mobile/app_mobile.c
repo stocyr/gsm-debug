@@ -36,6 +36,7 @@
 #include <osmocom/bb/mobile/vty.h>
 #include <osmocom/bb/mobile/app_mobile.h>
 #include <osmocom/bb/mobile/mncc.h>
+#include <osmocom/bb/mobile/mnccms.h>
 #include <osmocom/bb/mobile/voice.h>
 #include <osmocom/vty/telnet_interface.h>
 
@@ -50,8 +51,6 @@ extern void *l23_ctx;
 extern struct llist_head ms_list;
 extern int vty_reading;
 
-int mncc_recv_mobile(struct osmocom_ms *ms, int msg_type, void *arg);
-int mncc_recv_dummy(struct osmocom_ms *ms, int msg_type, void *arg);
 int (*mncc_recv_app)(struct osmocom_ms *ms, int, void *);
 static int quit;
 
@@ -145,6 +144,7 @@ int mobile_exit(struct osmocom_ms *ms, int force)
 	gsm48_mm_exit(ms);
 	gsm48_rr_exit(ms);
 	gsm_subscr_exit(ms);
+	mnccms_exit(ms);
 	gsm48_cc_exit(ms);
 	gsm480_ss_exit(ms);
 	gsm411_sms_exit(ms);
@@ -170,6 +170,7 @@ int mobile_init(struct osmocom_ms *ms)
 	lapdm_channel_set_l1(&ms->lapdm_channel, l1ctl_ph_prim_cb, ms);
 
 	gsm_sim_init(ms);
+	mnccms_init(ms);
 	gsm48_cc_init(ms);
 	gsm480_ss_init(ms);
 	gsm411_sms_init(ms);
