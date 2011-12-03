@@ -30,6 +30,10 @@ struct gsm_ui {
 				/* refresh timer */
 	char dialing[33];	/* dailing buffer */
 	int selected_call;	/* call that is selected */
+
+	/* select menus */
+	void *select_menu;	/* current menu */
+	void *choose_menu;	/* current choose item in menu */
 };
 
 int gui_start(struct osmocom_ms *ms);

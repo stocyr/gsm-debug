@@ -396,16 +396,881 @@ struct status_screen status_screen[GUI_NUM_STATUS] = {
 };
 
 /*
+ * select menus
+ */
+
+enum config_type {
+	SELECT_NODE,
+	SELECT_CHOOSE,
+	SELECT_NUMBER,
+	SELECT_INT,
+	SELECT_FIXINT,
+	SELECT_FIXSTRING,
+};
+
+struct gui_choose_set {
+	const char		*name;
+	int			value;
+};
+
+static struct gui_choose_set enable_disable_set[] = {
+	{ "Enabled", 1 },
+	{ "Disabled", 0 },
+	{ NULL, 0 }
+};
+
+static struct gui_choose_set activated_deactivated_set[] = {
+	{ "Activated", 1 },
+	{ "Deactivated", 0 },
+	{ NULL, 0 }
+};
+
+static struct gui_choose_set sim_type_set[] = {
+	{ "None", GSM_SIM_TYPE_NONE },
+	{ "Reader", GSM_SIM_TYPE_READER },
+	{ "Test SIM", GSM_SIM_TYPE_TEST },
+	{ NULL, 0 }
+};
+
+static struct gui_choose_set network_mode_set[] = {
+	{ "Automatic", PLMN_MODE_AUTO },
+	{ "Manual", PLMN_MODE_MANUAL },
+	{ NULL, 0 }
+};
+
+/* structure defines one line in a config menu */
+struct gui_select_line {
+	const char		*title;	/* menu title */
+	struct gui_select_line	*parent; /* parent menu */
+
+	const char		*name; /* entry name */
+	enum config_type	type; /* entry type */
+
+	/* sub node type */
+	struct gui_select_line	*node; /* sub menu */
+
+	/* select/number/int/fixint/fixstring type */
+	struct gui_choose_set	*set; /* settable values */
+	void *			(*query)(struct osmocom_ms *ms);
+	int			(*cmd)(struct osmocom_ms *ms, void *vlaue);
+	int			restart; /* if change requres reset */
+	int			digits; /* max number of digits */
+	int			min, max; /* range for integer */
+	int			fix; /* fixed value to use */
+	char			*fixstring; /* fixed string to use */
+};
+
+static void *config_knocking_query(struct osmocom_ms *ms)
+{
+	static int value;
+	
+	value = ms->settings.cw;
+
+	return &value;
+}
+static int config_knocking_cmd(struct osmocom_ms *ms, void *value)
+{
+	ms->settings.cw = *(int *)value;
+
+	return 0;
+}
+
+static void *config_autoanswer_query(struct osmocom_ms *ms)
+{
+	static int value;
+	
+	value = ms->settings.auto_answer;
+
+	return &value;
+}
+static int config_autoanswer_cmd(struct osmocom_ms *ms, void *value)
+{
+	ms->settings.auto_answer = *(int *)value;
+
+	return 0;
+}
+
+static void *config_clip_query(struct osmocom_ms *ms)
+{
+	static int value;
+	
+	value = ms->settings.clip;
+
+	return &value;
+}
+static int config_clip_cmd(struct osmocom_ms *ms, void *value)
+{
+	ms->settings.clip = *(int *)value;
+	if (value)
+		ms->settings.clir = 0;
+
+	return 0;
+}
+
+static void *config_clir_query(struct osmocom_ms *ms)
+{
+	static int value;
+	
+	value = ms->settings.clir;
+
+	return &value;
+}
+static int config_clir_cmd(struct osmocom_ms *ms, void *value)
+{
+	ms->settings.clir = *(int *)value;
+	if (value)
+		ms->settings.clip = 0;
+
+	return 0;
+}
+
+static void *config_sca_query(struct osmocom_ms *ms)
+{
+	return ms->settings.sms_sca;
+}
+static int config_sca_cmd(struct osmocom_ms *ms, void *value)
+{
+	strncpy(ms->settings.sms_sca, value, sizeof(ms->settings.sms_sca) - 1);
+
+	return 0;
+}
+
+static void *config_sim_type_query(struct osmocom_ms *ms)
+{
+	static int value;
+	
+	value = ms->settings.sim_type;
+
+	return &value;
+}
+static int config_sim_type_cmd(struct osmocom_ms *ms, void *value)
+{
+	ms->settings.sim_type = *(int *)value;
+
+	return 0;
+}
+
+static void *config_network_query(struct osmocom_ms *ms)
+{
+	static int value;
+	
+	value = ms->settings.plmn_mode;
+
+	return &value;
+}
+static int config_network_cmd(struct osmocom_ms *ms, void *value)
+{
+	int mode = *(int *)value;
+	struct msgb *nmsg;
+
+	if (!ms->started)
+		ms->settings.plmn_mode = mode;
+	else {
+		nmsg = gsm322_msgb_alloc((mode == PLMN_MODE_AUTO) ?
+			GSM322_EVENT_SEL_AUTO : GSM322_EVENT_SEL_MANUAL);
+		if (!nmsg)
+			return -ENOMEM;
+		gsm322_plmn_sendmsg(ms, nmsg);
+	}
+
+	return 0;
+}
+
+static void *config_imei_query(struct osmocom_ms *ms)
+{
+	return ms->settings.imei;
+}
+static int config_imei_cmd(struct osmocom_ms *ms, void *value)
+{
+	if (gsm_check_imei(value, "0"))
+		return -EINVAL;
+
+	strncpy(ms->settings.imei, value, sizeof(ms->settings.imei) - 1);
+	/* only copy the number of digits in imei */
+	strncpy(ms->settings.imeisv, value, strlen(ms->settings.imei));
+
+	return 0;
+}
+
+static void *config_imeisv_query(struct osmocom_ms *ms)
+{
+	return ms->settings.imeisv + strlen(ms->settings.imei);
+}
+static int config_imeisv_cmd(struct osmocom_ms *ms, void *value)
+{
+	if (gsm_check_imei(ms->settings.imei, value))
+		return -EINVAL;
+
+	/* only copy the sv */
+	strncpy(ms->settings.imeisv + strlen(ms->settings.imei), value, 1);
+
+	return 0;
+}
+
+static void *config_imei_random_query(struct osmocom_ms *ms)
+{
+	static int value;
+	
+	value = ms->settings.imei_random;
+
+	return &value;
+}
+static int config_imei_random_cmd(struct osmocom_ms *ms, void *value)
+{
+	ms->settings.imei_random = *(int *)value;
+
+	return 0;
+}
+
+static void *config_emerg_imsi_query(struct osmocom_ms *ms)
+{
+	return ms->settings.emergency_imsi;
+}
+static int config_emerg_imsi_cmd(struct osmocom_ms *ms, void *value)
+{
+	if (strlen(value) && gsm_check_imsi(value))
+		return -EINVAL;
+
+	strcpy(ms->settings.emergency_imsi, value);
+
+	return 0;
+}
+
+static void *config_tx_power_query(struct osmocom_ms *ms)
+{
+	static int value;
+	
+	value = ms->settings.alter_tx_power_value;
+
+	return &value;
+}
+static int config_tx_power_cmd(struct osmocom_ms *ms, void *value)
+{
+	ms->settings.alter_tx_power_value = *(int *)value;
+	ms->settings.alter_tx_power = 1;
+
+	return 0;
+}
+
+static int config_tx_power_auto_cmd(struct osmocom_ms *ms, void *value)
+{
+	ms->settings.alter_tx_power = 0;
+
+	return 0;
+}
+
+static void *config_sim_delay_query(struct osmocom_ms *ms)
+{
+	static int value;
+	
+	value = ms->settings.alter_delay;
+
+	return &value;
+}
+static int config_sim_delay_cmd(struct osmocom_ms *ms, void *value)
+{
+	ms->settings.alter_delay = *(int *)value;
+	gsm48_rr_alter_delay(ms);
+
+	return 0;
+}
+
+static void *config_stick_query(struct osmocom_ms *ms)
+{
+	static int value;
+	
+	value = ms->settings.stick_arfcn & 1023;
+
+	return &value;
+}
+static int config_stick_disable_cmd(struct osmocom_ms *ms, void *value)
+{
+	ms->settings.stick = 0;
+
+	return 0;
+}
+
+static int config_stick_cmd(struct osmocom_ms *ms, void *value)
+{
+	ms->settings.stick_arfcn = *(int *)value;
+	ms->settings.stick = 1;
+
+	return 0;
+}
+
+static int config_stick_pcs_cmd(struct osmocom_ms *ms, void *value)
+{
+	ms->settings.stick_arfcn = *(int *)value | ARFCN_PCS;
+	ms->settings.stick = 1;
+
+	return 0;
+}
+
+static struct gui_select_line config_setup[];
+
+/* call node */
+static struct gui_select_line config_call[] = {
+	{
+		.title = "Call SETUP",
+		.parent = config_setup,
+	},
+	{
+		.name = "Knocking",
+		.type = SELECT_CHOOSE,
+		.set = enable_disable_set,
+		.query = config_knocking_query,
+		.cmd = config_knocking_cmd,
+		.restart = 0,
+	},
+	{
+		.name = "Autoanswer",
+		.type = SELECT_CHOOSE,
+		.set = enable_disable_set,
+		.query = config_autoanswer_query,
+		.cmd = config_autoanswer_cmd,
+		.restart = 0,
+	},
+	{
+		.name = "CLIP",
+		.type = SELECT_CHOOSE,
+		.set = activated_deactivated_set,
+		.query = config_clip_query,
+		.cmd = config_clip_cmd,
+		.restart = 0,
+	},
+	{
+		.name = "CLIR",
+		.type = SELECT_CHOOSE,
+		.set = activated_deactivated_set,
+		.query = config_clir_query,
+		.cmd = config_clir_cmd,
+		.restart = 0,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* SMS node */
+static struct gui_select_line config_sms[] = {
+	{
+		.title = "SMS Setup",
+		.parent = config_setup,
+	},
+	{
+		.name = "SCA Number",
+		.type = SELECT_NUMBER,
+		.query = config_sca_query,
+		.cmd = config_sca_cmd,
+		.digits = 20,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+static struct gui_select_line config_phone[];
+
+/* IMEI node */
+static struct gui_select_line config_imei[] = {
+	{
+		.title = "IMEI Setup",
+		.parent = config_phone,
+	},
+	{
+		.name = "IMEI Number",
+		.type = SELECT_NUMBER,
+		.query = config_imei_query,
+		.cmd = config_imei_cmd,
+		.digits = 15,
+	},
+	{
+		.name = "Software Ver",
+		.type = SELECT_NUMBER,
+		.query = config_imeisv_query,
+		.cmd = config_imeisv_cmd,
+		.digits = 1,
+	},
+	{
+		.name = "Fixed IMEI",
+		.type = SELECT_FIXINT,
+		.cmd = config_imei_random_cmd,
+		.fix = 0,
+	},
+	{
+		.name = "Randomize",
+		.type = SELECT_INT,
+		.query = config_imei_random_query,
+		.cmd = config_imei_random_cmd,
+		.min = 0,
+		.max = 15,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* codec node */
+static struct gui_select_line config_codec[] = {
+	{
+		.title = "Voice Codec",
+		.parent = config_phone,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* support node */
+static struct gui_select_line config_support[] = {
+	{
+		.title = "Support",
+		.parent = config_phone,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* emergency IMSI */
+static struct gui_select_line config_emerg_imsi[] = {
+	{
+		.title = "Emerg. IMSI",
+		.parent = config_phone,
+	},
+	{
+		.name = "IMSI",
+		.type = SELECT_NUMBER,
+		.query = config_emerg_imsi_query,
+		.cmd = config_emerg_imsi_cmd,
+		.digits = 15,
+	},
+	{
+		.name = "No IMSI",
+		.type = SELECT_FIXSTRING,
+		.cmd = config_emerg_imsi_cmd,
+		.fixstring = "",
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* TX power node */
+static struct gui_select_line config_tx_power[] = {
+	{
+		.title = "TX Power",
+		.name = "Level", /* name of fixed selection */
+		.parent = config_phone,
+	},
+	{
+		.name = "Auto",
+		.type = SELECT_FIXINT,
+		.cmd = config_tx_power_auto_cmd,
+		.fix = 0,
+	},
+	{
+		.name = "Full",
+		.type = SELECT_FIXINT,
+		.cmd = config_tx_power_cmd,
+		.fix = 0,
+	},
+	{
+		.name = "Level",
+		.type = SELECT_INT,
+		.query = config_tx_power_query,
+		.cmd = config_tx_power_cmd,
+		.min = 0,
+		.max = 31,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* simulated delay node */
+static struct gui_select_line config_sim_delay[] = {
+	{
+		.title = "Sim. Delay",
+		.name = "Delay", /* name of fixed selection */
+		.parent = config_phone,
+	},
+	{
+		.name = "Disabled",
+		.type = SELECT_FIXINT,
+		.cmd = config_sim_delay_cmd,
+		.fix = 0,
+	},
+	{
+		.name = "Level",
+		.type = SELECT_INT,
+		.query = config_sim_delay_query,
+		.cmd = config_sim_delay_cmd,
+		.min = -128,
+		.max = 127,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* stick node */
+static struct gui_select_line config_stick[] = {
+	{
+		.title = "Stick ARFCN",
+		.name = "Stick", /* name of fixed selection */
+		.parent = config_phone,
+	},
+	{
+		.name = "Disabled",
+		.type = SELECT_FIXINT,
+		.cmd = config_stick_disable_cmd,
+		.fix = 0,
+	},
+	{
+		.name = "Level",
+		.type = SELECT_INT,
+		.query = config_stick_query,
+		.cmd = config_stick_cmd,
+		.min = 0,
+		.max = 1023,
+	},
+	{
+		.name = "Level PCS",
+		.type = SELECT_INT,
+		.query = config_stick_query,
+		.cmd = config_stick_pcs_cmd,
+		.min = 512,
+		.max = 810,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* phone node */
+static struct gui_select_line config_phone[] = {
+	{
+		.title = "Phone Config",
+		.parent = config_setup,
+	},
+	{
+		.name = "IMEI",
+		.type = SELECT_NODE,
+		.node = config_imei,
+	},
+	{
+		.name = "Codec",
+		.type = SELECT_NODE,
+		.node = config_codec,
+	},
+	{
+		.name = "Support",
+		.type = SELECT_NODE,
+		.node = config_support,
+	},
+	{
+		.name = "Emerg. IMSI",
+		.type = SELECT_NODE,
+		.node = config_emerg_imsi,
+	},
+	{
+		.name = "TX Power",
+		.type = SELECT_NODE,
+		.node = config_tx_power,
+	},
+	{
+		.name = "Sim. Delay",
+		.type = SELECT_NODE,
+		.node = config_sim_delay,
+	},
+	{
+		.name = "Stick ARFCN",
+		.type = SELECT_NODE,
+		.node = config_stick,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* network node */
+static struct gui_select_line config_network[] = {
+	{
+		.title = "Net Config",
+		.parent = config_setup,
+	},
+	{
+		.name = "Network Sel",
+		.type = SELECT_CHOOSE,
+		.set = network_mode_set,
+		.query = config_network_query,
+		.cmd = config_network_cmd,
+		.restart = 0,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* status node */
+static struct gui_select_line config_status[] = {
+	{
+		.title = "Status Set",
+		.parent = config_setup,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+static struct gui_select_line config_sim[];
+
+/* test SIM node */
+static struct gui_select_line config_test_sim[] = {
+	{
+		.title = "Test SIM",
+		.parent = config_sim,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* SIM node */
+static struct gui_select_line config_sim[] = {
+	{
+		.title = "SIM Setup",
+		.parent = config_setup,
+	},
+	{
+		.name = "SIM Type",
+		.type = SELECT_CHOOSE,
+		.set = sim_type_set,
+		.query = config_sim_type_query,
+		.cmd = config_sim_type_cmd,
+		.restart = 1,
+	},
+	{
+		.name = "Test SIM",
+		.type = SELECT_NODE,
+		.node = config_test_sim,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* setup node */
+static struct gui_select_line config_setup[] = {
+	{
+		.title = "Setup",
+		.parent = NULL,
+	},
+	{
+		.name = "Call",
+		.type = SELECT_NODE,
+		.node = config_call,
+	},
+	{
+		.name = "SMS",
+		.type = SELECT_NODE,
+		.node = config_sms,
+	},
+	{
+		.name = "Phone",
+		.type = SELECT_NODE,
+		.node = config_phone,
+	},
+	{
+		.name = "Network",
+		.type = SELECT_NODE,
+		.node = config_network,
+	},
+	{
+		.name = "Status",
+		.type = SELECT_NODE,
+		.node = config_status,
+	},
+	{
+		.name = "SIM",
+		.type = SELECT_NODE,
+		.node = config_sim,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+static struct gui_select_line menu_menu[];
+
+/* SMS node */
+static struct gui_select_line menu_sms[] = {
+	{
+		.title = "SMS Menu",
+		.parent = menu_menu,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* SIM node */
+static struct gui_select_line menu_sim[] = {
+	{
+		.title = "SIM Menu",
+		.parent = menu_menu,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* network node */
+static struct gui_select_line menu_network[] = {
+	{
+		.title = "Net Menu",
+		.parent = menu_menu,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+static struct gui_select_line menu_forwarding[];
+
+/* activate node */
+static struct gui_select_line menu_fwd_activate[] = {
+	{
+		.title = "Fwd Activate",
+		.parent = menu_forwarding,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* deactivate node */
+static struct gui_select_line menu_fwd_deactivate[] = {
+	{
+		.title = "Fwd Deactivate",
+		.parent = menu_forwarding,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* query node */
+static struct gui_select_line menu_fwd_query[] = {
+	{
+		.title = "Fwd Query",
+		.parent = menu_forwarding,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* forwarding node */
+static struct gui_select_line menu_forwarding[] = {
+	{
+		.title = "Fwd Menu",
+		.parent = menu_menu,
+	},
+	{
+		.name = "Activate",
+		.type = SELECT_NODE,
+		.node = menu_fwd_activate,
+	},
+	{
+		.name = "Deactivate",
+		.type = SELECT_NODE,
+		.node = menu_fwd_deactivate,
+	},
+	{
+		.name = "Query",
+		.type = SELECT_NODE,
+		.node = menu_fwd_query,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/* menu node */
+static struct gui_select_line menu_menu[] = {
+	{
+		.title = "Menu",
+		.parent = NULL,
+	},
+	{
+		.name = "SMS",
+		.type = SELECT_NODE,
+		.node = menu_sms,
+	},
+	{
+		.name = "SIM",
+		.type = SELECT_NODE,
+		.node = menu_sim,
+	},
+	{
+		.name = "Network",
+		.type = SELECT_NODE,
+		.node = menu_network,
+	},
+	{
+		.name = "Forwarding",
+		.type = SELECT_NODE,
+		.node = menu_forwarding,
+	},
+	{
+		.name = NULL,
+	},
+};
+
+/*
  * UI handling for mobile instance
  */
 
 static void update_status(void *arg);
+static int gui_select(struct osmocom_ms *ms, struct gui_select_line *menu);
+static int gui_choose(struct osmocom_ms *ms, struct gui_select_line *menu);
+static int gui_number(struct osmocom_ms *ms, struct gui_select_line *menu);
+static int gui_int(struct osmocom_ms *ms, struct gui_select_line *menu);
+static int gui_fixint(struct osmocom_ms *ms, struct gui_select_line *menu,
+	struct gui_select_line *value);
+static int gui_fixstring(struct osmocom_ms *ms, struct gui_select_line *menu,
+	struct gui_select_line *value);
+static int gui_chosen(struct osmocom_ms *ms, const char *value);
 
 enum {
 	MENU_STATUS,
 	MENU_DIALING,
 	MENU_CALL,
+	MENU_SELECT,
 };
+
+static int telnet_cb(struct ui_inst *ui)
+{
+	struct gsm_ui *gui = container_of(ui, struct gsm_ui, ui);
+	struct osmocom_ms *ms = container_of(gui, struct osmocom_ms, gui);
+
+	if (!llist_empty(&gui->ui.active_connections)) {
+		/* start status screen again, if timer is not running */
+		if (gui->menu == MENU_STATUS
+		 && !osmo_timer_pending(&gui->timer))
+			gui_start(ms);
+		else {
+			/* refresh, if someone connects */
+			ui_inst_refresh(ui);
+		}
+	} else {
+		/* stop if no more connection */
+		gui_stop(ms);
+	}
+	return 0;
+}
 
 static int beep_cb(struct ui_inst *ui)
 {
@@ -414,143 +1279,90 @@ static int beep_cb(struct ui_inst *ui)
 	return 0;
 }
 
-static int key_cb(struct ui_inst *ui, enum ui_key kp)
+static int key_dialing_cb(struct ui_inst *ui, enum ui_key kp);
+
+static int gui_dialing(struct gsm_ui *gui) {
+	struct ui_inst *ui = &gui->ui;
+
+	/* go to dialing screen */
+	gui->menu = MENU_DIALING;
+	ui_inst_init(ui, &ui_dialview, key_dialing_cb, beep_cb,
+		telnet_cb);
+	ui->title = "Number:";
+	ui->ud.dialview.number = gui->dialing;
+	ui->ud.dialview.num_len = sizeof(gui->dialing);
+	ui->ud.dialview.pos = 1;
+	ui_inst_refresh(ui);
+
+	return 0;
+}
+
+static int key_dialing_cb(struct ui_inst *ui, enum ui_key kp)
 {
 	struct gsm_ui *gui = container_of(ui, struct gsm_ui, ui);
 	struct osmocom_ms *ms = container_of(gui, struct osmocom_ms, gui);
-	struct gsm_call *call, *selected_call = NULL;
-	int num_calls = 0, num_hold = 0;
+	struct gsm_call *call;
+	int num_calls = 0;
 
-	switch (gui->menu) {
-	case MENU_STATUS:
-		if ((kp >= UI_KEY_0 && kp <= UI_KEY_9) ||
-		 kp == UI_KEY_STAR || kp == UI_KEY_HASH) {
-			gui->dialing[0] = kp;
-			gui->dialing[1] = '\0';
-dial:
-			/* go to dialing screen */
-			gui->menu = MENU_DIALING;
-			ui_inst_init(ui, &ui_dialview, key_cb, beep_cb);
-			ui->ud.dialview.title = "Number:";
-			ui->ud.dialview.number = gui->dialing;
-			ui->ud.dialview.num_len = sizeof(gui->dialing);
-			ui->ud.dialview.pos = 1;
-			ui_inst_refresh(ui);
+	if (kp == UI_KEY_PICKUP) {
+		mncc_call(ms, ui->ud.dialview.number);
 
-			return 1; /* handled */
+		/* go to call screen */
+		gui->menu = MENU_STATUS;
+		gui_notify_call(ms);
+
+		return 1; /* handled */
+	}
+	if (kp == UI_KEY_HANGUP) {
+		llist_for_each_entry(call, &ms->mncc_entity.call_list,
+			entry) {
+			num_calls++;
 		}
-		if (kp == UI_KEY_PICKUP) {
-			gui->dialing[0] = '\0';
-			goto dial;
-		}
-		break;
-	case MENU_DIALING:
-		if (kp == UI_KEY_PICKUP) {
-			mncc_call(ms, ui->ud.dialview.number);
-
+		if (!num_calls) {
+			/* go to status screen */
+			gui_start(ms);
+		} else {
 			/* go to call screen */
 			gui->menu = MENU_STATUS;
 			gui_notify_call(ms);
-
-			return 1; /* handled */
 		}
-		if (kp == UI_KEY_HANGUP) {
-			llist_for_each_entry(call, &ms->mncc_entity.call_list,
-				entry) {
-				num_calls++;
-			}
-			if (!num_calls) {
-				/* go to status screen */
-				gui_start(ms);
-			} else {
-				/* go to call screen */
-				gui->menu = MENU_STATUS;
-				gui_notify_call(ms);
-			}
 
-			return 1; /* handled */
-		}
-		break;
-	case MENU_CALL:
-		if (kp == UI_KEY_UP) {
-			if (gui->selected_call > 0) {
-				gui->selected_call--;
-				gui_notify_call(ms);
-			}
+		return 1; /* handled */
+	}
 
-			return 1; /* handled */
-		}
-		if (kp == UI_KEY_DOWN) {
-			gui->selected_call++;
-			gui_notify_call(ms);
+	return 0;
+}
 
-			return 1; /* handled */
-		}
-		llist_for_each_entry(call, &ms->mncc_entity.call_list, entry) {
-			if (num_calls == gui->selected_call)
-				selected_call = call;
-			num_calls++;
-			if (call->call_state == CALL_ST_HOLD)
-				num_hold++;
-		}
-		if (!selected_call)
-			return 1;
-		if (kp == UI_KEY_HANGUP) {
-			mncc_hangup(ms, gui->selected_call + 1);
+static int key_status_cb(struct ui_inst *ui, enum ui_key kp)
+{
+	struct gsm_ui *gui = container_of(ui, struct gsm_ui, ui);
+	struct osmocom_ms *ms = container_of(gui, struct osmocom_ms, gui);
 
-			return 1; /* handled */
-		}
-		if (kp == UI_KEY_PICKUP) {
-			if (selected_call->call_state == CALL_ST_MT_RING
-			 || selected_call->call_state == CALL_ST_MT_KNOCK)
-				mncc_answer(ms, gui->selected_call + 1);
-			else
-			if (selected_call->call_state == CALL_ST_HOLD)
-				mncc_retrieve(ms, gui->selected_call + 1);
+	if ((kp >= UI_KEY_0 && kp <= UI_KEY_9) || kp == UI_KEY_STAR
+	 || kp == UI_KEY_HASH) {
+		gui->dialing[0] = kp;
+		gui->dialing[1] = '\0';
+		/* go to dialing screen */
+		gui_dialing(gui);
 
-			return 1; /* handled */
-		}
-		if (kp == UI_KEY_F1) {
-			/* only if all calls on hold */
-			if (num_calls == num_hold) {
-				gui->dialing[0] = '\0';
-				goto dial;
-			}
+		return 1; /* handled */
+	}
+	if (kp == UI_KEY_PICKUP) {
+		gui->dialing[0] = '\0';
+		/* go to dialing screen */
+		gui_dialing(gui);
+	}
+	if (kp == UI_KEY_F1) {
+		/* go to setup screen */
+		gui_select(ms, menu_menu);
 
-			return 1; /* handled */
-		}
-		if (kp == UI_KEY_F2) {
-			if (selected_call->call_state == CALL_ST_ACTIVE)
-				mncc_hold(ms, gui->selected_call + 1);
-			else
-			if (selected_call->call_state == CALL_ST_HOLD)
-				mncc_retrieve(ms, gui->selected_call + 1);
+		return 1; /* handled */
+	}
+	if (kp == UI_KEY_F2) {
+		/* go to setup screen */
+		gui_select(ms, config_setup);
 
-			return 1; /* handled */
-		}
-		if ((kp >= UI_KEY_0 && kp <= UI_KEY_9) ||
-		 kp == UI_KEY_STAR || kp == UI_KEY_HASH) {
-			if (selected_call->call_state == CALL_ST_ACTIVE) {
-				/* if dtmf is not supported */
-				if (!ms->settings.cc_dtmf)
-					return 1; /* handled */
-				char dtmf[2];
-
-				dtmf[0] = kp;
-				dtmf[1] = '\0';
-				mncc_dtmf(ms, gui->selected_call + 1, dtmf);
-				return 1; /* handled */
-			}
-			/* only if all calls on hold */
-			if (num_calls == num_hold) {
-				gui->dialing[0] = kp;
-				gui->dialing[1] = '\0';
-				goto dial;
-			}
-
-			return 1; /* handled */
-		}
-		break;
+		return 1; /* handled */
 	}
 
 	return 0;
@@ -564,6 +1376,10 @@ static void update_status(void *arg)
 	struct gsm_ui *gui = &ms->gui;
 	int i, j = 0, n, lines = 0, has_network_name = 0, has_bottom_line = 0;
 	char *p = gui->status_text;
+
+	/* no timer, if no telnet connection */
+	if (!UI_TARGET && llist_empty(&gui->ui.active_connections))
+		return;
 
 	/* if timer fires */
 	if (gui->menu != MENU_STATUS)
@@ -630,7 +1446,8 @@ int gui_start(struct osmocom_ms *ms)
 {
 	/* go to status screen */
 	ms->gui.menu = MENU_STATUS;
-	ui_inst_init(&ms->gui.ui, &ui_listview, key_cb, beep_cb);
+	ui_inst_init(&ms->gui.ui, &ui_listview, key_status_cb, beep_cb,
+		telnet_cb);
 	update_status(ms);
 
 	return 0;
@@ -641,6 +1458,97 @@ int gui_stop(struct osmocom_ms *ms)
 	struct gsm_ui *gui = &ms->gui;
 
         osmo_timer_del(&gui->timer);
+
+	return 0;
+}
+
+static int key_call_cb(struct ui_inst *ui, enum ui_key kp)
+{
+	struct gsm_ui *gui = container_of(ui, struct gsm_ui, ui);
+	struct osmocom_ms *ms = container_of(gui, struct osmocom_ms, gui);
+	struct gsm_call *call, *selected_call = NULL;
+	int num_calls = 0, num_hold = 0;
+
+	if (kp == UI_KEY_UP) {
+		if (gui->selected_call > 0) {
+			gui->selected_call--;
+			gui_notify_call(ms);
+		}
+
+		return 1; /* handled */
+	}
+	if (kp == UI_KEY_DOWN) {
+		gui->selected_call++;
+		gui_notify_call(ms);
+
+		return 1; /* handled */
+	}
+	llist_for_each_entry(call, &ms->mncc_entity.call_list, entry) {
+		if (num_calls == gui->selected_call)
+			selected_call = call;
+		num_calls++;
+		if (call->call_state == CALL_ST_HOLD)
+			num_hold++;
+	}
+	if (!selected_call)
+		return 1;
+	if (kp == UI_KEY_HANGUP) {
+		mncc_hangup(ms, gui->selected_call + 1);
+
+		return 1; /* handled */
+	}
+	if (kp == UI_KEY_PICKUP) {
+		if (selected_call->call_state == CALL_ST_MT_RING
+		 || selected_call->call_state == CALL_ST_MT_KNOCK)
+			mncc_answer(ms, gui->selected_call + 1);
+		else
+		if (selected_call->call_state == CALL_ST_HOLD)
+			mncc_retrieve(ms, gui->selected_call + 1);
+
+		return 1; /* handled */
+	}
+	if (kp == UI_KEY_F1) {
+		/* only if all calls on hold */
+		if (num_calls == num_hold) {
+			gui->dialing[0] = '\0';
+			/* go to dialing screen */
+			gui_dialing(gui);
+		}
+
+		return 1; /* handled */
+	}
+	if (kp == UI_KEY_F2) {
+		if (selected_call->call_state == CALL_ST_ACTIVE)
+			mncc_hold(ms, gui->selected_call + 1);
+		else
+		if (selected_call->call_state == CALL_ST_HOLD)
+			mncc_retrieve(ms, gui->selected_call + 1);
+
+		return 1; /* handled */
+	}
+	if ((kp >= UI_KEY_0 && kp <= UI_KEY_9) || kp == UI_KEY_STAR
+	 || kp == UI_KEY_HASH) {
+		if (selected_call->call_state == CALL_ST_ACTIVE) {
+			/* if dtmf is not supported */
+			if (!ms->settings.cc_dtmf)
+				return 1; /* handled */
+			char dtmf[2];
+
+			dtmf[0] = kp;
+			dtmf[1] = '\0';
+			mncc_dtmf(ms, gui->selected_call + 1, dtmf);
+			return 1; /* handled */
+		}
+		/* only if all calls on hold */
+		if (num_calls == num_hold) {
+			gui->dialing[0] = kp;
+			gui->dialing[1] = '\0';
+			/* go to dialing screen */
+			gui_dialing(gui);
+		}
+
+		return 1; /* handled */
+	}
 
 	return 0;
 }
@@ -664,7 +1572,8 @@ int gui_notify_call(struct osmocom_ms *ms)
 
 	if (gui->menu == MENU_STATUS) {
 		ms->gui.menu = MENU_CALL;
-		ui_inst_init(&ms->gui.ui, &ui_listview, key_cb, beep_cb);
+		ui_inst_init(&ms->gui.ui, &ui_listview, key_call_cb, beep_cb,
+			telnet_cb);
 		gui->selected_call = 999;
 		/* continue here */
 	}
@@ -830,4 +1739,370 @@ int gui_notify_call(struct osmocom_ms *ms)
 
 	return 0;
 }
+
+static int key_select_cb(struct ui_inst *ui, enum ui_key kp)
+{
+	struct gsm_ui *gui = container_of(ui, struct gsm_ui, ui);
+	struct osmocom_ms *ms = container_of(gui, struct osmocom_ms, gui);
+	struct gui_select_line *menu = gui->select_menu;
+
+	if (kp == UI_KEY_F1) {
+		/* go paretn menu, or status screen, if none */
+		if (menu[0].parent)
+			gui_select(ms, menu[0].parent);
+		else
+			gui_start(ms);
+
+		return 1; /* hanlded */
+	}
+	if (kp == UI_KEY_F2) {
+		/* if menu is empty */
+		if (!menu[ui->ud.selectview.cursor + 1].name)
+			return 1; /* handled */
+		/* go sub node */
+		switch (menu[ui->ud.selectview.cursor + 1].type) {
+		case SELECT_NODE:
+			gui_select(ms, menu[ui->ud.selectview.cursor + 1].node);
+			break;
+		case SELECT_CHOOSE:
+			gui_choose(ms, &menu[ui->ud.selectview.cursor + 1]);
+			break;
+		case SELECT_NUMBER:
+			gui_number(ms, &menu[ui->ud.selectview.cursor + 1]);
+			break;
+		case SELECT_INT:
+			gui_int(ms, &menu[ui->ud.selectview.cursor + 1]);
+			break;
+		case SELECT_FIXINT:
+			gui_fixint(ms, menu,
+				&menu[ui->ud.selectview.cursor + 1]);
+			break;
+		case SELECT_FIXSTRING:
+			gui_fixstring(ms, menu,
+				&menu[ui->ud.selectview.cursor + 1]);
+			break;
+		}
+
+		return 1; /* hanlded */
+	}
+
+	return 0;
+}
+
+/* initialize a select menu */
+static int gui_select(struct osmocom_ms *ms, struct gui_select_line *menu)
+{
+	struct gsm_ui *gui = &ms->gui;
+	char *p = gui->status_text;
+	int i;
+
+	gui->menu = MENU_SELECT;
+	ui_inst_init(&gui->ui, &ui_selectview, key_select_cb, beep_cb,
+		telnet_cb);
+
+	/* set menu */
+	gui->select_menu = menu;
+	gui->ui.title = menu->title;
+	menu++;
+
+	/* create list */
+	for (i = 0; menu[i].name; i++) {
+		if (i == GUI_NUM_STATUS_LINES)
+			break;
+		strncpy(p, menu[i].name, UI_COLS);
+		p[UI_COLS] = '\0';
+		gui->status_lines[i] = p;
+		p += UI_COLS + 1;
+	}
+
+	gui->ui.bottom_line = "back enter";
+
+	gui->ui.ud.selectview.lines = i;
+	gui->ui.ud.selectview.text = gui->status_lines;
+	ui_inst_refresh(&gui->ui);
+
+	return 0;
+}
+
+static int key_choose_cb(struct ui_inst *ui, enum ui_key kp)
+{
+	struct gsm_ui *gui = container_of(ui, struct gsm_ui, ui);
+	struct osmocom_ms *ms = container_of(gui, struct osmocom_ms, gui);
+	struct gui_select_line *menu = gui->choose_menu;
+	struct gui_choose_set *set = menu->set;
+	int rc;
+
+	if (kp == UI_KEY_F1) {
+		/* go back to selection */
+		gui_select(ms, gui->select_menu);
+
+		return 1; /* hanlded */
+	}
+	if (kp == UI_KEY_F2) {
+		/* set selection */
+		set += ui->ud.selectview.cursor;
+		rc = menu->cmd(ms, &set->value);
+		if (rc)
+			gui_chosen(ms, NULL);
+		else
+			gui_chosen(ms, set->name);
+
+		return 1; /* hanlded */
+	}
+
+	return 0;
+}
+
+static int gui_choose(struct osmocom_ms *ms, struct gui_select_line *menu)
+{
+	struct gsm_ui *gui = &ms->gui;
+	char *p = gui->status_text;
+	int i;
+	struct gui_choose_set *set = menu->set;
+	int cursor = 0;
+	int value;
+
+	ui_inst_init(&gui->ui, &ui_selectview, key_choose_cb, beep_cb,
+		telnet_cb);
+
+	/* set menu */
+	gui->choose_menu = menu;
+	gui->ui.title = menu->name;
+
+	value = *(int *)menu->query(ms);
+
+	/* create list of items to choose */
+	for (i = 0; set[i].name; i++) {
+		if (i == GUI_NUM_STATUS_LINES)
+			break;
+		if (value == set[i].value)
+			cursor = i;
+		strncpy(p, set[i].name, UI_COLS);
+		p[UI_COLS] = '\0';
+		gui->status_lines[i] = p;
+		p += UI_COLS + 1;
+	}
+
+	gui->ui.bottom_line = "back set";
+
+	gui->ui.ud.selectview.lines = i;
+	gui->ui.ud.selectview.text = gui->status_lines;
+	gui->ui.ud.selectview.cursor = cursor;
+	ui_inst_refresh(&gui->ui);
+
+	return 0;
+}
+
+static int key_number_cb(struct ui_inst *ui, enum ui_key kp)
+{
+	struct gsm_ui *gui = container_of(ui, struct gsm_ui, ui);
+	struct osmocom_ms *ms = container_of(gui, struct osmocom_ms, gui);
+	struct gui_select_line *menu = gui->choose_menu;
+	int rc;
+
+	if (kp == UI_KEY_HANGUP) {
+		/* go back to selection */
+		gui_select(ms, gui->select_menu);
+
+		return 1; /* hanlded */
+	}
+	if (kp == UI_KEY_PICKUP) {
+		/* set selection */
+		rc = menu->cmd(ms, gui->dialing);
+		if (rc)
+			gui_chosen(ms, NULL);
+		else
+			gui_chosen(ms, gui->dialing);
+
+		return 1; /* hanlded */
+	}
+
+	return 0;
+}
+
+static int gui_number(struct osmocom_ms *ms, struct gui_select_line *menu)
+{
+	struct gsm_ui *gui = &ms->gui;
+
+	ui_inst_init(&gui->ui, &ui_dialview, key_number_cb, beep_cb,
+		telnet_cb);
+
+	/* set menu */
+	gui->choose_menu = menu;
+	gui->ui.title = menu->name;
+	strncpy(gui->dialing, menu->query(ms), sizeof(gui->dialing) - 1);
+	gui->ui.ud.dialview.number = gui->dialing;
+	gui->ui.ud.dialview.num_len = menu->digits + 1;
+	gui->ui.ud.dialview.pos = strlen(gui->dialing);
+	ui_inst_refresh(&gui->ui);
+
+	return 0;
+}
+
+static int key_int_cb(struct ui_inst *ui, enum ui_key kp)
+{
+	struct gsm_ui *gui = container_of(ui, struct gsm_ui, ui);
+	struct osmocom_ms *ms = container_of(gui, struct osmocom_ms, gui);
+	struct gui_select_line *menu = gui->choose_menu;
+	int rc;
+
+	if (kp == UI_KEY_F1) {
+		/* go back to selection */
+		gui_select(ms, gui->select_menu);
+
+		return 1; /* hanlded */
+	}
+	if (kp == UI_KEY_F2) {
+		int value;
+
+		if (ui->ud.intview.sign)
+			value = 0 - ui->ud.intview.value;
+		else
+			value = ui->ud.intview.value;
+		/* if entered value exceeds range, let ui fix that */
+		if (value < menu->min || value > menu->max)
+			return 0; /* unhandled */
+		/* set selection */
+		rc = menu->cmd(ms, &value);
+		if (rc)
+			gui_chosen(ms, NULL);
+		else {
+			char val_str[16];
+
+			sprintf(val_str, "%d", value);
+			gui_chosen(ms, val_str);
+		}
+
+		return 1; /* hanlded */
+	}
+
+	return 0;
+}
+
+static int gui_int(struct osmocom_ms *ms, struct gui_select_line *menu)
+{
+	struct gsm_ui *gui = &ms->gui;
+	int value;
+
+	ui_inst_init(&gui->ui, &ui_intview, key_int_cb, beep_cb,
+		telnet_cb);
+
+	/* set menu */
+	gui->choose_menu = menu;
+	gui->ui.title = menu->name;
+	value = *(int *)menu->query(ms);
+	if (value < 0) {
+		gui->ui.ud.intview.value = 0 - value;
+		gui->ui.ud.intview.sign = 1;
+	} else {
+		gui->ui.ud.intview.value = value;
+		gui->ui.ud.intview.sign = 0;
+	}
+	gui->ui.ud.intview.min = menu->min;
+	gui->ui.ud.intview.max = menu->max;
+	gui->ui.bottom_line = "back set";
+	ui_inst_refresh(&gui->ui);
+
+	return 0;
+}
+
+static int gui_fixint(struct osmocom_ms *ms, struct gui_select_line *menu,
+	struct gui_select_line *value)
+{
+	struct gsm_ui *gui = &ms->gui;
+	int rc;
+
+	/* set fixed value */
+	gui->choose_menu = menu;
+	rc = value->cmd(ms, &value->fix);
+	if (rc)
+		gui_chosen(ms, NULL);
+	else {
+		gui_chosen(ms, value->name);
+	}
+
+	return 0;
+}
+
+static int gui_fixstring(struct osmocom_ms *ms, struct gui_select_line *menu,
+	struct gui_select_line *value)
+{
+	struct gsm_ui *gui = &ms->gui;
+	int rc;
+
+	/* set fixed value */
+	gui->choose_menu = menu;
+	rc = value->cmd(ms, value->fixstring);
+	if (rc)
+		gui_chosen(ms, NULL);
+	else {
+		gui_chosen(ms, value->name);
+	}
+
+	return 0;
+}
+
+static int key_chosen_cb(struct ui_inst *ui, enum ui_key kp)
+{
+	struct gsm_ui *gui = container_of(ui, struct gsm_ui, ui);
+	struct osmocom_ms *ms = container_of(gui, struct osmocom_ms, gui);
+
+	/* go back to selection */
+	gui_select(ms, gui->select_menu);
+
+	return 1; /* handled */
+}
+
+static int gui_chosen(struct osmocom_ms *ms, const char *value)
+{
+	struct gsm_ui *gui = &ms->gui;
+	char *p = gui->status_text;
+	struct gui_select_line *menu = gui->choose_menu;
+	int j = 0;
+
+	ui_inst_init(&gui->ui, &ui_listview, key_chosen_cb, beep_cb,
+		telnet_cb);
+
+	/* set menu */
+	gui->ui.title = menu->name;
+
+	p[0] = '\0';
+	gui->status_lines[j++] = p;
+	p += UI_COLS + 1;
+	if (value) {
+		if (menu->restart)
+			strcpy(p, "after reset:");
+		else
+			strcpy(p, "is now:");
+		p[UI_COLS] = '\0';
+		gui->status_lines[j++] = p;
+		p += UI_COLS + 1;
+		p[0] = '\0';
+		gui->status_lines[j++] = p;
+		p += UI_COLS + 1;
+		while (*value) {
+			if (j == GUI_NUM_STATUS_LINES)
+				break;
+			strncpy(p, value, UI_COLS);
+			p[UI_COLS] = '\0';
+			value += strlen(p);
+			gui->status_lines[j++] = p;
+			p += UI_COLS + 1;
+		}
+	} else {
+		strcpy(p, "failed!");
+		p[UI_COLS] = '\0';
+		gui->status_lines[j++] = p;
+		p += UI_COLS + 1;
+	}
+
+	gui->ui.bottom_line = "back ";
+
+	gui->ui.ud.selectview.lines = j;
+	gui->ui.ud.selectview.text = gui->status_lines;
+	ui_inst_refresh(&gui->ui);
+
+	return 0;
+}
+
 
