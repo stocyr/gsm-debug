@@ -3,6 +3,7 @@
 
 #define UI_ROWS		8
 #define UI_COLS		12
+#define UI_TARGET	0
 
 enum ui_key {
 	UI_KEY_0 = '0',
@@ -40,11 +41,15 @@ union ui_view_data {
 		int cursor;
 	} selectview;
 	struct {
-		const char *title;
 		char *number;
 		int num_len;
 		int pos;
 	} dialview;
+	struct {
+		unsigned int value;
+		int sign;
+		int min, max;
+	} intview;
 };
 
 struct ui_inst;
@@ -59,6 +64,7 @@ struct ui_view {
 
 struct ui_inst {
 	struct ui_view *uv;
+	const char *title;
 	const char *bottom_line;
 	union ui_view_data ud;
 	int (*key_cb)(struct ui_inst *ui, enum ui_key kp);
@@ -70,15 +76,18 @@ struct ui_inst {
 	void *tall_telnet_ctx;
 	struct osmo_fd server_socket;
 	struct llist_head active_connections;
+	int (*telnet_cb)(struct ui_inst *ui);
 };
 
 extern struct ui_view ui_listview;
 extern struct ui_view ui_selectview;
 extern struct ui_view ui_dialview;
+extern struct ui_view ui_intview;
 
 int ui_inst_init(struct ui_inst *ui, struct ui_view *uv,
 	int (*key_cb)(struct ui_inst *ui, enum ui_key kp),
-	int (*beep_cb)(struct ui_inst *ui));
+	int (*beep_cb)(struct ui_inst *ui),
+	int (*telnet_cb)(struct ui_inst *ui));
 int ui_inst_keypad(struct ui_inst *ui, enum ui_key kp);
 int ui_inst_refresh(struct ui_inst *ui);
 

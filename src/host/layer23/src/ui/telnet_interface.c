@@ -135,6 +135,7 @@ static int telnet_close_client(struct osmo_fd *fd)
 {
 	struct ui_telnet_connection *conn =
 		(struct ui_telnet_connection*)fd->data;
+	struct ui_inst *ui = conn->ui;
 
 	close(fd->fd);
 	osmo_fd_unregister(fd);
@@ -143,6 +144,10 @@ static int telnet_close_client(struct osmo_fd *fd)
 
 	llist_del(&conn->entry);
 	talloc_free(conn);
+
+	/* notify about connection */
+	ui->telnet_cb(ui);
+
 	return 0;
 }
 
@@ -324,7 +329,8 @@ static int telnet_new_connection(struct osmo_fd *fd, unsigned int what)
 	vty_dont_linemode(ui);
 	vty_do_window_size(ui);
 
-	ui_inst_refresh(ui);
+	/* notify about connection */
+	ui->telnet_cb(ui);
 
 	return 0;
 }

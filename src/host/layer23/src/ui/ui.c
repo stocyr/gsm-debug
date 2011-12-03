@@ -135,6 +135,8 @@ static int keypad_listview(struct ui_inst *ui, struct ui_view *uv,
 {
 	int rows = UI_ROWS;
 
+	if (ui->title)
+		rows--;
 	if (ui->bottom_line)
 		rows--;
 
@@ -162,7 +164,7 @@ static int display_listview(struct ui_inst *ui, union ui_view_data *ud)
 {
 	const char **text = ud->listview.text;
 	int lines = ud->listview.lines;
-	int i;
+	int i, j = 0;
 	int rows = UI_ROWS;
 	
 	if (ui->bottom_line)
@@ -174,14 +176,31 @@ static int display_listview(struct ui_inst *ui, union ui_view_data *ud)
 		if (*text == NULL)
 			break;
 		text++;
-		lines--;
+		j++;
 	}
 
 	ui_clearhome(ui);
-	for (i = 0; i < rows; i++) {
-		if (*text && i < lines) {
+	/* title */
+	i = 0;
+	if (ui->title) {
+		char line[UI_COLS + 1];
+		int len, shift;
+
+		strncpy(line, ui->title, UI_COLS);
+		line[UI_COLS] = '\0';
+		len = strlen(line);
+		if (len + 1 < UI_COLS) {
+			shift = (UI_COLS - len) / 2;
+			memcpy(line + shift, line, len + 1);
+			memset(line, ' ', shift);
+		}
+		ui_puts(ui, i++, line);
+	}
+	for (; i < rows; i++) {
+		if (*text && j < lines) {
 			ui_puts(ui, i, *text);
 			text++;
+			j++;
 		} else
 			break;
 //			ui_puts(ui, i, "~");
@@ -209,6 +228,13 @@ static int init_selectview(struct ui_view *uv, union ui_view_data *ud)
 static int keypad_selectview(struct ui_inst *ui, struct ui_view *uv,
 	union ui_view_data *ud, enum ui_key kp)
 {
+	int rows = UI_ROWS;
+	
+	if (ui->title)
+		rows--;
+	if (ui->bottom_line)
+		rows--;
+
 	switch (kp) {
 	case UI_KEY_UP:
 		if (ud->selectview.cursor == 0)
@@ -219,13 +245,13 @@ static int keypad_selectview(struct ui_inst *ui, struct ui_view *uv,
 			ud->selectview.vpos = ud->selectview.cursor;
 		break;
 	case UI_KEY_DOWN:
-		if (UI_ROWS + ud->selectview.cursor >= ud->selectview.lines)
+		if (ud->selectview.cursor >= ud->selectview.lines - 1)
 			return -1;
 		ud->selectview.cursor++;
 		/* follow cursor */
-		if (ud->selectview.cursor > ud->selectview.vpos + UI_ROWS - 1)
+		if (ud->selectview.cursor > ud->selectview.vpos + rows - 1)
 			ud->selectview.vpos = ud->selectview.cursor -
-								(UI_ROWS - 1);
+								(rows - 1);
 		break;
 	default:
 		return 0;
@@ -239,24 +265,56 @@ static int keypad_selectview(struct ui_inst *ui, struct ui_view *uv,
 static int display_selectview(struct ui_inst *ui, union ui_view_data *ud)
 {
 	const char **text = ud->selectview.text;
-	int i;
+	int lines = ud->selectview.lines;
+	int i, j = 0;
+	int rows = UI_ROWS;
+	char line[UI_COLS + 1];
+	
+	if (ui->bottom_line)
+		rows--;
 
 	/* vpos will skip lines */
 	for (i = 0; i < ud->selectview.vpos; i++) {
 		/* if we reached end of test, we leave the pointer there */
 		if (*text == NULL)
 			break;
+		text++;
+		j++;
 	}
 
 	ui_clearhome(ui);
-	for (i = 0; i < UI_ROWS; i++) {
-		if (*text) {
-			ui_puts(ui, i, *text);
+	/* title */
+	i = 0;
+	if (ui->title) {
+		int len, shift;
+
+		strncpy(line, ui->title, UI_COLS);
+		line[UI_COLS] = '\0';
+		len = strlen(line);
+		if (len + 1 < UI_COLS) {
+			shift = (UI_COLS - len) / 2;
+			memcpy(line + shift, line, len + 1);
+			memset(line, ' ', shift);
+		}
+		ui_puts(ui, i++, line);
+	}
+	for (; i < rows; i++) {
+		if (*text && j < lines) {
+			strncpy(line + 1, *text, UI_COLS - 1);
+			if (ud->selectview.cursor == j)
+				line[0] = '*';
+			else
+				line[0] = ' ';
+			line[UI_COLS] = '\0';
+			ui_puts(ui, i, line);
 			text++;
+			j++;
 		} else
 			break;
 //			ui_puts(ui, i, "~");
 	}
+	if (ui->bottom_line)
+		bottom_puts(ui, ui->bottom_line);
 	ui_flush(ui);
 
 	return 0;
@@ -353,7 +411,7 @@ static int display_dialview(struct ui_inst *ui, union ui_view_data *ud)
 	char line[UI_COLS + 1];
 	char *p = ud->dialview.number;
 	int len = strlen(p);
-	int i = 1;
+	int i = 1, y;
 
 	/* if number shrunk */
 	if (ud->dialview.pos > len)
@@ -361,21 +419,21 @@ static int display_dialview(struct ui_inst *ui, union ui_view_data *ud)
 
 	ui_clearhome(ui);
 	/* title */
-	if (ud->dialview.title) {
-		char title[UI_COLS + 1];
+	if (ui->title) {
 		int len, shift;
 
-		strncpy(title, ud->dialview.title, UI_COLS);
-		title[UI_COLS] = '\0';
-		len = strlen(title);
+		strncpy(line, ui->title, UI_COLS);
+		line[UI_COLS] = '\0';
+		len = strlen(line);
 		if (len + 1 < UI_COLS) {
 			shift = (UI_COLS - len) / 2;
-			memcpy(title + shift, title, len + 1);
-			memset(title, ' ', shift);
+			memcpy(line + shift, line, len + 1);
+			memset(line, ' ', shift);
 		}
-		ui_puts(ui, i++, title);
+		ui_puts(ui, i++, line);
 		i++;
 	}
+	y = i;
 	/* if line exceeds display width */
 	while (len > UI_COLS) {
 		memcpy(line, p, UI_COLS);
@@ -390,9 +448,172 @@ static int display_dialview(struct ui_inst *ui, union ui_view_data *ud)
 	/* cursor */
 	ui->cursor_on = 1;
 	ui->cursor_x = ud->dialview.pos % UI_COLS;
-	ui->cursor_y = i;
+	ui->cursor_y = y + (ud->dialview.pos / UI_COLS);
 	/* F-keys info */
 	bottom_puts(ui, "clr del");
+	ui_flush(ui);
+
+	return 0;
+}
+
+/*
+ * integer view
+ */
+
+static int init_intview(struct ui_view *uv, union ui_view_data *ud)
+{
+	ud->intview.min = -128;
+	ud->intview.max = 127;
+	ud->intview.value = 0;
+
+	return 0;
+}
+
+static int keypad_intview(struct ui_inst *ui, struct ui_view *uv,
+	union ui_view_data *ud, enum ui_key kp)
+{
+	int value;
+
+	switch (kp) {
+	case UI_KEY_1:
+	case UI_KEY_2:
+	case UI_KEY_3:
+	case UI_KEY_4:
+	case UI_KEY_5:
+	case UI_KEY_6:
+	case UI_KEY_7:
+	case UI_KEY_8:
+	case UI_KEY_9:
+	case UI_KEY_0:
+		value = ud->intview.value;
+		value = value * 10 + kp - UI_KEY_0;
+		/* if additional digit would cause overflow (or no change) */
+		if (value <= ud->intview.value)
+			return - 1;
+		if (value > 0x7fffffff)
+			return - 1;
+		ud->intview.value = value;
+		break;
+	case UI_KEY_STAR:
+		ud->intview.sign = 1 - ud->intview.sign;
+		break;
+	case UI_KEY_UP:
+	case UI_KEY_DOWN:
+		if (ud->intview.sign)
+			value = 0 - ud->intview.value;
+		else
+			value = ud->intview.value;
+		/* check if limit is already reached */
+		if (kp == UI_KEY_UP && value == ud->intview.max)
+			return -1;
+		if (kp == UI_KEY_DOWN && value == ud->intview.min)
+			return -1;
+		/* if value out of range, put it in range */
+		if (value > ud->intview.max) {
+			value = ud->intview.max;
+			goto store_value;
+		}
+		if (value < ud->intview.min) {
+			value = ud->intview.min;
+			goto store_value;
+		}
+		if (kp == UI_KEY_UP)
+			value++;
+		else
+			value--;
+		goto store_value;
+	case UI_KEY_LEFT: /* delete */
+		/* already 0 */
+		if (ud->intview.value == 0)
+			return -1;
+		ud->intview.value /= 10;
+		break;
+	default:
+		/* if other key is pressed, make value fit in range */
+		if (ud->intview.sign)
+			value = 0 - ud->intview.value;
+		else
+			value = ud->intview.value;
+		if (value < ud->intview.min) {
+			value = ud->intview.min;
+			goto store_value;
+		}
+		if (value > ud->intview.max) {
+			value = ud->intview.max;
+			goto store_value;
+		}
+		return 0;
+	}
+	/* refresh display */
+	uv->display(ui, ud);
+
+	return 0;
+
+store_value:
+	/* store new value */
+	if (value < 0) {
+		ud->intview.value = 0 - value;
+		ud->intview.sign = 1;
+	} else {
+		ud->intview.value = value;
+		ud->intview.sign = 0;
+	}
+	/* refresh display */
+	uv->display(ui, ud);
+
+	return 0;
+}
+
+static int display_intview(struct ui_inst *ui, union ui_view_data *ud)
+{
+	char line[UI_COLS + 2];
+	char *p = ud->dialview.number;
+	int i = 1, y, x = 1;
+	int value;
+
+	ui_clearhome(ui);
+	/* title */
+	if (ui->title) {
+		int len, shift;
+
+		strncpy(line, ui->title, UI_COLS);
+		line[UI_COLS] = '\0';
+		len = strlen(line);
+		if (len + 1 < UI_COLS) {
+			shift = (UI_COLS - len) / 2;
+			memcpy(line + shift, line, len + 1);
+			memset(line, ' ', shift);
+		}
+		ui_puts(ui, i++, line);
+		i++;
+	}
+	y = i;
+	/* value */
+	if (ud->intview.sign)
+		line[0] = '-';
+	else
+		line[0] = ' ';
+	sprintf(line + 1, "%d", ud->intview.value);
+	ui_puts(ui, i++, line);
+	p += UI_COLS;
+	/* range */
+	i++;
+	snprintf(line, UI_COLS + 1, "(%d..%d)", ud->intview.min,
+		ud->intview.max);
+	line[UI_COLS] = '\0';
+	ui_puts(ui, i++, line);
+	/* cursor */
+	value = ud->intview.value;
+	while (value) {
+		x++;
+		value /= 10;
+	}
+	ui->cursor_on = 1;
+	ui->cursor_x = x;
+	ui->cursor_y = y;
+	/* F-keys info */
+	if (ui->bottom_line)
+		bottom_puts(ui, ui->bottom_line);
 	ui_flush(ui);
 
 	return 0;
@@ -403,24 +624,27 @@ static int display_dialview(struct ui_inst *ui, union ui_view_data *ud)
  */
 
 struct ui_view ui_listview = {
-	.name = "list-view",
 	.init = init_listview,
 	.keypad = keypad_listview,
 	.display = display_listview,
 };
 
 struct ui_view ui_selectview = {
-	.name = "select-view",
 	.init = init_selectview,
 	.keypad = keypad_selectview,
 	.display = display_selectview,
 };
 
 struct ui_view ui_dialview = {
-	.name = "dial-view",
 	.init = init_dialview,
 	.keypad = keypad_dialview,
 	.display = display_dialview,
+};
+
+struct ui_view ui_intview = {
+	.init = init_intview,
+	.keypad = keypad_intview,
+	.display = display_intview,
 };
 
 /*
@@ -429,11 +653,13 @@ struct ui_view ui_dialview = {
 
 int ui_inst_init(struct ui_inst *ui, struct ui_view *uv,
 	int (*key_cb)(struct ui_inst *ui, enum ui_key kp),
-	int (*beep_cb)(struct ui_inst *ui))
+	int (*beep_cb)(struct ui_inst *ui),
+	int (*telnet_cb)(struct ui_inst *ui))
 {
 	ui->uv = uv;
 	ui->key_cb = key_cb;
 	ui->beep_cb = beep_cb;
+	ui->telnet_cb = telnet_cb;
 
 	ui_clearhome(ui);
 
