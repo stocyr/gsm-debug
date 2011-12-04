@@ -135,7 +135,7 @@ static int status_imsi(struct osmocom_ms *ms, char *text)
 	len = strlen(text);
 	/* wrap */
 	if (len > UI_COLS) {
-		memcpy(text + UI_COLS + 1, text + UI_COLS, len - UI_COLS);
+		memcpy(text + UI_COLS + 1, text + UI_COLS, len - UI_COLS + 1);
 		text[UI_COLS] = '\0';
 		text[2 * UI_COLS + 1] = '\0';
 
@@ -154,7 +154,7 @@ static int status_imei(struct osmocom_ms *ms, char *text)
 	len = strlen(text);
 	/* wrap */
 	if (len > UI_COLS) {
-		memcpy(text + UI_COLS + 1, text + UI_COLS, len - UI_COLS);
+		memcpy(text + UI_COLS + 1, text + UI_COLS, len - UI_COLS + 1);
 		text[UI_COLS] = '\0';
 		text[2 * UI_COLS + 1] = '\0';
 
@@ -438,6 +438,12 @@ static struct gui_choose_set network_mode_set[] = {
 	{ NULL, 0 }
 };
 
+static struct gui_choose_set codec_set[] = {
+	{ "Full-rate", 0 },
+	{ "Half-rate", 1 },
+	{ NULL, 0 }
+};
+
 /* structure defines one line in a config menu */
 struct gui_select_line {
 	const char		*title;	/* menu title */
@@ -706,6 +712,89 @@ static int config_stick_pcs_cmd(struct osmocom_ms *ms, void *value)
 	return 0;
 }
 
+static void *config_support_half_query(struct osmocom_ms *ms)
+{
+	static int value = 1;
+
+	if (!ms->settings.half_v1 && !ms->settings.half_v3)
+		value = 0;
+	else
+		value = ms->settings.half;
+
+	return &value;
+}
+static int config_support_half_cmd(struct osmocom_ms *ms, void *value)
+{
+	if (!ms->settings.half_v1 && !ms->settings.half_v3)
+		return -ENOTSUP;
+	ms->settings.half = *(int *)value;
+	if (ms->settings.half == 0)
+		ms->settings.half_prefer = 0;
+
+	return 0;
+}
+
+static void *config_prefer_codec_query(struct osmocom_ms *ms)
+{
+	static int value = 0;
+
+	if (!ms->settings.half_v1 && !ms->settings.half_v3)
+		return &value;
+	if (!ms->settings.half)
+		return &value;
+	value = ms->settings.half_prefer;
+
+	return &value;
+}
+static int config_prefer_codec_cmd(struct osmocom_ms *ms, void *value)
+{
+	if (*(int *)value == 0) {
+		if (!ms->settings.full_v1 && !ms->settings.full_v2
+		 && !ms->settings.full_v3)
+			return -ENOTSUP;
+		ms->settings.half_prefer = 0;
+	} else {
+		if (!ms->settings.half_v1 && !ms->settings.half_v3)
+			return -ENOTSUP;
+		ms->settings.half = 1;
+		ms->settings.half_prefer = 1;
+	}
+
+	return 0;
+}
+
+static void *config_status_query(struct osmocom_ms *ms)
+{
+	static int value;
+	struct gui_select_line *menu = ms->gui.choose_menu;
+	int i = 0;
+
+	for (i = 0; i < GUI_NUM_STATUS; i++) {
+		if (!strcmp(menu->name, status_screen[i].feature))
+			break;
+	}
+
+	value = (ms->settings.status_enable >> i) & 1;
+
+	return &value;
+}
+static int config_status_cmd(struct osmocom_ms *ms, void *value)
+{
+	struct gui_select_line *menu = ms->gui.choose_menu;
+	int i = 0;
+
+	for (i = 0; i < GUI_NUM_STATUS; i++) {
+		if (!strcmp(menu->name, status_screen[i].feature))
+			break;
+	}
+	if (*(int *)value)
+		ms->settings.status_enable |= (1 << i);
+	else
+		ms->settings.status_enable &= ~(1 << i);
+
+	return 0;
+}
+
 static struct gui_select_line config_setup[];
 
 /* call node */
@@ -817,10 +906,27 @@ static struct gui_select_line config_codec[] = {
 		.parent = config_phone,
 	},
 	{
+		.name = "Half-rate",
+		.type = SELECT_CHOOSE,
+		.set = enable_disable_set,
+		.query = config_support_half_query,
+		.cmd = config_support_half_cmd,
+		.restart = 0,
+	},
+	{
+		.name = "Prefer Codec",
+		.type = SELECT_CHOOSE,
+		.set = codec_set,
+		.query = config_prefer_codec_query,
+		.cmd = config_prefer_codec_cmd,
+		.restart = 0,
+	},
+	{
 		.name = NULL,
 	},
 };
 
+#if 0
 /* support node */
 static struct gui_select_line config_support[] = {
 	{
@@ -831,6 +937,7 @@ static struct gui_select_line config_support[] = {
 		.name = NULL,
 	},
 };
+#endif
 
 /* emergency IMSI */
 static struct gui_select_line config_emerg_imsi[] = {
@@ -928,7 +1035,7 @@ static struct gui_select_line config_stick[] = {
 		.fix = 0,
 	},
 	{
-		.name = "Level",
+		.name = "ARFCN",
 		.type = SELECT_INT,
 		.query = config_stick_query,
 		.cmd = config_stick_cmd,
@@ -936,7 +1043,7 @@ static struct gui_select_line config_stick[] = {
 		.max = 1023,
 	},
 	{
-		.name = "Level PCS",
+		.name = "ARFCN PCS",
 		.type = SELECT_INT,
 		.query = config_stick_query,
 		.cmd = config_stick_pcs_cmd,
@@ -964,11 +1071,13 @@ static struct gui_select_line config_phone[] = {
 		.type = SELECT_NODE,
 		.node = config_codec,
 	},
+#if 0
 	{
 		.name = "Support",
 		.type = SELECT_NODE,
 		.node = config_support,
 	},
+#endif
 	{
 		.name = "Emerg. IMSI",
 		.type = SELECT_NODE,
@@ -1014,14 +1123,25 @@ static struct gui_select_line config_network[] = {
 };
 
 /* status node */
-static struct gui_select_line config_status[] = {
-	{
-		.title = "Status Set",
-		.parent = config_setup,
-	},
-	{
-		.name = NULL,
-	},
+static struct gui_select_line config_status[GUI_NUM_STATUS + 2];
+
+void gui_init_status_config(void)
+{
+	int i;
+
+	memset(config_status, 0, sizeof(config_status));
+
+	config_status[0].title = "Status Set";
+	config_status[0].parent = config_setup;
+
+	for (i = 0; i < GUI_NUM_STATUS; i++) {
+		config_status[i + 1].name = status_screen[i].feature;
+		config_status[i + 1].type = SELECT_CHOOSE;
+		config_status[i + 1].set = enable_disable_set;
+		config_status[i + 1].query = config_status_query;
+		config_status[i + 1].cmd = config_status_cmd;
+		config_status[i + 1].restart = 0;
+	}
 };
 
 static struct gui_select_line config_sim[];
@@ -1286,12 +1406,12 @@ static int gui_dialing(struct gsm_ui *gui) {
 
 	/* go to dialing screen */
 	gui->menu = MENU_DIALING;
-	ui_inst_init(ui, &ui_dialview, key_dialing_cb, beep_cb,
+	ui_inst_init(ui, &ui_stringview, key_dialing_cb, beep_cb,
 		telnet_cb);
 	ui->title = "Number:";
-	ui->ud.dialview.number = gui->dialing;
-	ui->ud.dialview.num_len = sizeof(gui->dialing);
-	ui->ud.dialview.pos = 1;
+	ui->ud.stringview.number = gui->dialing;
+	ui->ud.stringview.num_len = sizeof(gui->dialing);
+	ui->ud.stringview.pos = 1;
 	ui_inst_refresh(ui);
 
 	return 0;
@@ -1305,7 +1425,20 @@ static int key_dialing_cb(struct ui_inst *ui, enum ui_key kp)
 	int num_calls = 0;
 
 	if (kp == UI_KEY_PICKUP) {
-		mncc_call(ms, ui->ud.dialview.number);
+		char *number = ui->ud.stringview.number;
+		int i;
+
+		/* check if number contains not dialable digits */
+		for (i = 0; i < strlen(number); i++) {
+			if ((i != 0 && number[i] == '+')
+			 || !strchr("01234567890*#abc+", number[i])) {
+			 	/* point to error digit */
+				ui->ud.stringview.pos = i;
+				ui_inst_refresh(ui);
+				return 1; /* handled */
+			}
+		}
+		mncc_call(ms, ui->ud.stringview.number);
 
 		/* go to call screen */
 		gui->menu = MENU_STATUS;
@@ -1434,6 +1567,7 @@ static void update_status(void *arg)
 
 	gui->ui.ud.listview.lines = j;
 	gui->ui.ud.listview.text = gui->status_lines;
+	gui->ui.title = NULL;
 	ui_inst_refresh(&gui->ui);
 
 	/* schedule next refresh */
@@ -1907,6 +2041,18 @@ static int key_number_cb(struct ui_inst *ui, enum ui_key kp)
 		return 1; /* hanlded */
 	}
 	if (kp == UI_KEY_PICKUP) {
+		char *number = ui->ud.stringview.number;
+		int i;
+
+		for (i = 0; i < strlen(number); i++) {
+			if ((i != 0 && number[i] == '+')
+			 || !strchr("01234567890*#abc+", number[i])) {
+			 	/* point to error digit */
+				ui->ud.stringview.pos = i;
+				ui_inst_refresh(ui);
+				return 1; /* handled */
+			}
+		}
 		/* set selection */
 		rc = menu->cmd(ms, gui->dialing);
 		if (rc)
@@ -1924,16 +2070,16 @@ static int gui_number(struct osmocom_ms *ms, struct gui_select_line *menu)
 {
 	struct gsm_ui *gui = &ms->gui;
 
-	ui_inst_init(&gui->ui, &ui_dialview, key_number_cb, beep_cb,
+	ui_inst_init(&gui->ui, &ui_stringview, key_number_cb, beep_cb,
 		telnet_cb);
 
 	/* set menu */
 	gui->choose_menu = menu;
 	gui->ui.title = menu->name;
 	strncpy(gui->dialing, menu->query(ms), sizeof(gui->dialing) - 1);
-	gui->ui.ud.dialview.number = gui->dialing;
-	gui->ui.ud.dialview.num_len = menu->digits + 1;
-	gui->ui.ud.dialview.pos = strlen(gui->dialing);
+	gui->ui.ud.stringview.number = gui->dialing;
+	gui->ui.ud.stringview.num_len = menu->digits + 1;
+	gui->ui.ud.stringview.pos = strlen(gui->dialing);
 	ui_inst_refresh(&gui->ui);
 
 	return 0;
