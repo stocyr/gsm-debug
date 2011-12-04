@@ -44,7 +44,9 @@ union ui_view_data {
 		char *number;
 		int num_len;
 		int pos;
-	} dialview;
+		int options;
+		int options_pos;
+	} stringview;
 	struct {
 		unsigned int value;
 		int sign;
@@ -81,7 +83,7 @@ struct ui_inst {
 
 extern struct ui_view ui_listview;
 extern struct ui_view ui_selectview;
-extern struct ui_view ui_dialview;
+extern struct ui_view ui_stringview;
 extern struct ui_view ui_intview;
 
 int ui_inst_init(struct ui_inst *ui, struct ui_view *uv,
