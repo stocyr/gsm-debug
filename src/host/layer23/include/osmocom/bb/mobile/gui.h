@@ -34,11 +34,15 @@ struct gsm_ui {
 	/* select menus */
 	void *select_menu;	/* current menu */
 	void *choose_menu;	/* current choose item in menu */
+
+	/* supserv */
+	int ss_pending, ss_active;
 };
 
 void gui_init_status_config(void);
 int gui_start(struct osmocom_ms *ms);
 int gui_stop(struct osmocom_ms *ms);
 int gui_notify_call(struct osmocom_ms *ms);
+int gui_notify_ss(struct osmocom_ms *ms, const char *fmt, ...);
 
 #endif /* _gui_h */

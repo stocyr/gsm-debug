@@ -26,6 +26,7 @@
 #include <osmocom/bb/common/networks.h>
 #include <osmocom/bb/ui/telnet_interface.h>
 #include <osmocom/bb/mobile/mnccms.h>
+#include <osmocom/bb/mobile/gsm480_ss.h>
 
 /*
  * status screen generation
@@ -1363,12 +1364,14 @@ static int gui_fixint(struct osmocom_ms *ms, struct gui_select_line *menu,
 static int gui_fixstring(struct osmocom_ms *ms, struct gui_select_line *menu,
 	struct gui_select_line *value);
 static int gui_chosen(struct osmocom_ms *ms, const char *value);
+static int gui_supserv(struct gsm_ui *gui);
 
 enum {
 	MENU_STATUS,
 	MENU_DIALING,
 	MENU_CALL,
 	MENU_SELECT,
+	MENU_SUPSERV,
 };
 
 static int telnet_cb(struct ui_inst *ui)
@@ -1428,6 +1431,12 @@ static int key_dialing_cb(struct ui_inst *ui, enum ui_key kp)
 		char *number = ui->ud.stringview.number;
 		int i;
 
+		/* check for supplementary services first */
+		if (number[0] == '*' || number[0] == '#') {
+			gui_supserv(gui);
+
+			return 1; /* handled */
+		}
 		/* check if number contains not dialable digits */
 		for (i = 0; i < strlen(number); i++) {
 			if ((i != 0 && number[i] == '+')
@@ -2044,6 +2053,7 @@ static int key_number_cb(struct ui_inst *ui, enum ui_key kp)
 		char *number = ui->ud.stringview.number;
 		int i;
 
+		/* check if number is valid */
 		for (i = 0; i < strlen(number); i++) {
 			if ((i != 0 && number[i] == '+')
 			 || !strchr("01234567890*#abc+", number[i])) {
@@ -2251,4 +2261,129 @@ static int gui_chosen(struct osmocom_ms *ms, const char *value)
 	return 0;
 }
 
+static int key_supserv_cb(struct ui_inst *ui, enum ui_key kp)
+{
+	struct gsm_ui *gui = container_of(ui, struct gsm_ui, ui);
+	struct osmocom_ms *ms = container_of(gui, struct osmocom_ms, gui);
 
+	if (kp == UI_KEY_F2) {
+		/* no key if pending */
+		if (gui->ss_pending)
+			return 0;
+		/* go back to start */
+		gui_start(ms);
+		/* terminate SS connection */
+		if (gui->ss_active)
+			ss_send(ms, "hangup", 0);
+
+		return 1; /* hanlded */
+	}
+
+	return 0;
+}
+
+static int gui_supserv(struct gsm_ui *gui) {
+	struct osmocom_ms *ms = container_of(gui, struct osmocom_ms, gui);
+	struct ui_inst *ui = &gui->ui;
+
+	/* go to supplementary services screen */
+	gui->menu = MENU_SUPSERV;
+	ui_inst_init(ui, &ui_listview, key_supserv_cb, beep_cb,
+		telnet_cb);
+	ui->title = "SS Request";
+	ui->bottom_line = " "; 
+	gui->ui.ud.listview.lines = 0;
+	gui->ui.ud.listview.text = gui->status_lines;
+	ui_inst_refresh(ui);
+
+	/* send request to supserv process */
+	gui->ss_active = 0;
+	gui->ss_pending = 1; /* must be set prior call, gui_notify_ss might be
+			       called there
+			     */
+	ss_send(ms, gui->dialing, 0);
+
+	return 0;
+}
+
+int gui_notify_ss(struct osmocom_ms *ms, const char *fmt, ...)
+{
+	struct gsm_ui *gui = &ms->gui;
+	struct ui_inst *ui = &gui->ui;
+	char buffer[1000], *b = buffer, *start, *end, *p;
+	int j = gui->ui.ud.listview.lines;
+	va_list args;
+
+	/* if connection is pending, clear listview buffer, otherwise append */
+	if (gui->ss_pending) {
+		j = 0;
+		gui->ss_pending = 0;
+	}
+	p = gui->status_text + j * (UI_COLS + 1);
+
+	/* not our process */
+	if (gui->menu != MENU_SUPSERV)
+		return 0;
+
+	/* end of process indication */
+	if (!fmt) {
+		gui->ss_active = 0;
+		ui->bottom_line = " back"; 
+		ui_inst_refresh(&gui->ui);
+
+		return 0;
+	} else
+		gui->ss_active = 1;
+
+	va_start(args, fmt);
+	vsnprintf(buffer, sizeof(buffer) - 1, fmt, args);
+	buffer[sizeof(buffer) - 1] = '\0';
+	va_end(args);
+
+	ui->title = NULL;
+	/* print buffer to listview */
+	while (*b) {
+		if (j == GUI_NUM_STATUS_LINES)
+			break;
+		/* find start and end of a line. the line ends with \n or \0 */
+		start = b;
+		end = strchr(b, '\n');
+		if (end)
+			b = end + 1;
+		else {
+			end = b + strlen(b);
+			b = end;
+		}
+		/* if line is longer than display width */
+		if (end - start > UI_COLS) {
+			/* loop until next word exceeds line */
+			end = start;
+			while ((b = strchr(end, ' '))) {
+				if (!b)
+					break;
+				if (b - start > UI_COLS)
+					break;
+				end = b + 1;
+			}
+			/* if word is longer than line, we must break inside */
+			if (start == end) {
+				end = start + UI_COLS;
+				b = end;
+			} else {
+				b = end;
+				end--; /* remove last space */
+			}
+		}
+		/* copy line into buffer */
+		if (end - start)
+			memcpy(p, start, end - start);
+		p[end - start] = '\0';
+		gui->status_lines[j++] = p;
+		p += UI_COLS + 1;
+	}
+	gui->ui.ud.listview.lines = j;
+	ui->bottom_line = " end"; 
+	ui_inst_refresh(&gui->ui);
+
+	return 0;
+}
