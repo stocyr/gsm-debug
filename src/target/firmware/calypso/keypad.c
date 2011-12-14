@@ -42,11 +42,21 @@ static key_handler_t key_handler = NULL;
 
 void emit_key(uint8_t key, uint8_t state)
 {
+	static int power_count = 0;
+
 	printf("key=%u %s\n", key, state == PRESSED ? "pressed" : "released");
 
-	if (state == RELEASED)
-		if (key == KEY_POWER)
-			twl3025_power_off();
+	if (state == RELEASED) {
+		if (key == KEY_POWER) {
+			power_count++;
+			if (power_count == 3)
+				twl3025_power_off();
+		}
+	}
+	if (state == PRESSED) {
+		if (key != KEY_POWER)
+			power_count = 0;
+	}
 
 	if(key_handler) {
 		key_handler(key, state);

@@ -42,6 +42,7 @@
 #include <abb/twl3025.h>
 #include <rf/trf6151.h>
 #include <calypso/sim.h>
+#include <display.h>
 
 #include <l1ctl_proto.h>
 
@@ -573,6 +574,28 @@ static void l1ctl_sim_req(struct msgb *msg)
    sim_apdu(len, data);
 }
 
+/* Transmit a L1CTL_KEYPAD_IND */
+void l1ctl_tx_keypad_ind(uint8_t key)
+{
+	struct msgb *msg = l1ctl_msgb_alloc(L1CTL_KEYPAD_IND);
+	struct l1ctl_keypad_ind *kp_ind;
+	kp_ind = (struct l1ctl_keypad_ind *)
+				msgb_put(msg, sizeof(*kp_ind));
+	kp_ind->key = key;
+
+	l1_queue_for_l2(msg);
+}
+
+static void l1ctl_display_req(struct msgb *msg)
+{
+	struct l1ctl_hdr *l1h = (struct l1ctl_hdr *) msg->data;
+	struct l1ctl_display_req *dr = (struct l1ctl_display_req *) l1h->data;
+
+	printf("DISPLAY (%d) %s\n", dr->y, dr->text);
+//	display_goto_xy(dr->x, dr->y);
+	display_puts(dr->text);
+}
+
 /* callback from SERCOMM when L2 sends a message to L1 */
 static void l1a_l23_rx_cb(uint8_t dlci, struct msgb *msg)
 {
@@ -642,6 +665,9 @@ static void l1a_l23_rx_cb(uint8_t dlci, struct msgb *msg)
 		goto exit_nofree;
 	case L1CTL_SIM_REQ:
 		l1ctl_sim_req(msg);
+		break;
+	case L1CTL_DISPLAY_REQ:
+		l1ctl_display_req(msg);
 		break;
 	}
 

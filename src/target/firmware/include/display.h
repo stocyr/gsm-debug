@@ -40,6 +40,7 @@ static inline int display_putchar(unsigned char c)
 	return display->putc(c);
 }
 int display_puts(const char *s);
+int display_goto_xy(int x, int y);
 
 extern const struct display_driver st7558_display;
 extern const struct display_driver ssd1783_display;

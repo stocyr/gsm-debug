@@ -109,8 +109,8 @@ static void twl3025_irq(enum irq_nr nr)
 			/* poll PWON status and power off the phone when the
 			 * powerbutton has been released (otherwise it will
 			 * poweron immediately again) */
-			while (!(twl3025_reg_read(VRPCSTS) & 0x10)) { };
-			twl3025_power_off();
+//			while (!(twl3025_reg_read(VRPCSTS) & 0x10)) { };
+//			twl3025_power_off();
 		}
 		if (src & 0x08)
 			handle_charger();

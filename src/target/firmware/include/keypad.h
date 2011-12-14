@@ -26,7 +26,7 @@ enum buttons {
 };
 
 enum key_codes {
-	KEY_0	= 0,
+	KEY_0 = '0',
 	KEY_1,
 	KEY_2,
 	KEY_3,
@@ -36,17 +36,17 @@ enum key_codes {
 	KEY_7,
 	KEY_8,
 	KEY_9,
-	KEY_STAR,	//*
-	KEY_HASH,	//#
-	KEY_MENU,	//center of directional keys
-	KEY_LEFT_SB,	//softbutton
-	KEY_RIGHT_SB,	//softbutton
-	KEY_UP,
-	KEY_DOWN,
-	KEY_LEFT,
-	KEY_RIGHT,
-	KEY_OK,		//green off-hook
-	KEY_POWER,	//red on-hook
+	KEY_STAR = '*',
+	KEY_HASH = '#',
+	KEY_MENU = 25,		//center of directional keys
+	KEY_LEFT_SB = 1,	//softbutton
+	KEY_RIGHT_SB = 2,	//softbutton
+	KEY_UP = 28,
+	KEY_DOWN = 29,
+	KEY_LEFT = 30,
+	KEY_RIGHT = 31,
+	KEY_OK = 26,		//green off-hook
+	KEY_POWER = 27,		//red on-hook
 	KEY_INV = 0xFF
 };
 
