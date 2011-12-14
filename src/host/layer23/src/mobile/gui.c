@@ -1364,7 +1364,8 @@ static int gui_fixint(struct osmocom_ms *ms, struct gui_select_line *menu,
 static int gui_fixstring(struct osmocom_ms *ms, struct gui_select_line *menu,
 	struct gui_select_line *value);
 static int gui_chosen(struct osmocom_ms *ms, const char *value);
-static int gui_supserv(struct gsm_ui *gui);
+static int gui_supserv(struct gsm_ui *gui, int clear);
+static int gui_input(struct gsm_ui *gui, int menu);
 
 enum {
 	MENU_STATUS,
@@ -1372,6 +1373,7 @@ enum {
 	MENU_CALL,
 	MENU_SELECT,
 	MENU_SUPSERV,
+	MENU_SS_INPUT,
 };
 
 static int telnet_cb(struct ui_inst *ui)
@@ -1404,7 +1406,8 @@ static int beep_cb(struct ui_inst *ui)
 
 static int key_dialing_cb(struct ui_inst *ui, enum ui_key kp);
 
-static int gui_dialing(struct gsm_ui *gui) {
+static int gui_dialing(struct gsm_ui *gui)
+{
 	struct ui_inst *ui = &gui->ui;
 
 	/* go to dialing screen */
@@ -1433,7 +1436,7 @@ static int key_dialing_cb(struct ui_inst *ui, enum ui_key kp)
 
 		/* check for supplementary services first */
 		if (number[0] == '*' || number[0] == '#') {
-			gui_supserv(gui);
+			gui_supserv(gui, 1);
 
 			return 1; /* handled */
 		}
@@ -2266,6 +2269,27 @@ static int key_supserv_cb(struct ui_inst *ui, enum ui_key kp)
 	struct gsm_ui *gui = container_of(ui, struct gsm_ui, ui);
 	struct osmocom_ms *ms = container_of(gui, struct osmocom_ms, gui);
 
+	if ((kp >= UI_KEY_0 && kp <= UI_KEY_9) || kp == UI_KEY_STAR
+	 || kp == UI_KEY_HASH) {
+		/* no key if pending */
+		if (!gui->ss_active)
+			return 0;
+		gui->dialing[0] = kp;
+		gui->dialing[1] = '\0';
+		/* go to input screen */
+		gui_input(gui, MENU_SS_INPUT);
+
+		return 1; /* handled */
+	}
+	if (kp == UI_KEY_PICKUP) {
+		if (!gui->ss_active)
+			return 0;
+		gui->dialing[0] = '\0';
+		/* go to input screen */
+		gui_input(gui, MENU_SS_INPUT);
+
+		return 1; /* handled */
+	}
 	if (kp == UI_KEY_F2) {
 		/* no key if pending */
 		if (gui->ss_pending)
@@ -2282,9 +2306,13 @@ static int key_supserv_cb(struct ui_inst *ui, enum ui_key kp)
 	return 0;
 }
 
-static int gui_supserv(struct gsm_ui *gui) {
+static int gui_supserv(struct gsm_ui *gui, int clear) {
 	struct osmocom_ms *ms = container_of(gui, struct osmocom_ms, gui);
 	struct ui_inst *ui = &gui->ui;
+
+	/* if we don't want to keep our list buffer */
+	if (clear)
+		gui->ss_lines = 0;
 
 	/* go to supplementary services screen */
 	gui->menu = MENU_SUPSERV;
@@ -2292,7 +2320,7 @@ static int gui_supserv(struct gsm_ui *gui) {
 		telnet_cb);
 	ui->title = "SS Request";
 	ui->bottom_line = " "; 
-	gui->ui.ud.listview.lines = 0;
+	gui->ui.ud.listview.lines = gui->ss_lines;
 	gui->ui.ud.listview.text = gui->status_lines;
 	ui_inst_refresh(ui);
 
@@ -2301,7 +2329,8 @@ static int gui_supserv(struct gsm_ui *gui) {
 	gui->ss_pending = 1; /* must be set prior call, gui_notify_ss might be
 			       called there
 			     */
-	ss_send(ms, gui->dialing, 0);
+	if (gui->dialing[0])
+		ss_send(ms, gui->dialing, 0);
 
 	return 0;
 }
@@ -2311,7 +2340,7 @@ int gui_notify_ss(struct osmocom_ms *ms, const char *fmt, ...)
 	struct gsm_ui *gui = &ms->gui;
 	struct ui_inst *ui = &gui->ui;
 	char buffer[1000], *b = buffer, *start, *end, *p;
-	int j = gui->ui.ud.listview.lines;
+	int j = gui->ss_lines;
 	va_list args;
 
 	/* if connection is pending, clear listview buffer, otherwise append */
@@ -2322,8 +2351,19 @@ int gui_notify_ss(struct osmocom_ms *ms, const char *fmt, ...)
 	p = gui->status_text + j * (UI_COLS + 1);
 
 	/* not our process */
-	if (gui->menu != MENU_SUPSERV)
+	if (gui->menu != MENU_SS_INPUT
+	 && gui->menu != MENU_SUPSERV)
 		return 0;
+
+	/* change back to supserv display */
+	if (gui->menu != MENU_SUPSERV) {
+		gui->menu = MENU_SUPSERV;
+		ui_inst_init(ui, &ui_listview, key_supserv_cb, beep_cb,
+			telnet_cb);
+		ui->title = "SS Request";
+		gui->ui.ud.listview.lines = gui->ss_lines;
+		gui->ui.ud.listview.text = gui->status_lines;
+	}
 
 	/* end of process indication */
 	if (!fmt) {
@@ -2381,9 +2421,50 @@ int gui_notify_ss(struct osmocom_ms *ms, const char *fmt, ...)
 		gui->status_lines[j++] = p;
 		p += UI_COLS + 1;
 	}
-	gui->ui.ud.listview.lines = j;
+	gui->ss_lines = gui->ui.ud.listview.lines = j;
 	ui->bottom_line = " end"; 
 	ui_inst_refresh(&gui->ui);
 
 	return 0;
 }
+
+static int key_input_cb(struct ui_inst *ui, enum ui_key kp);
+
+static int gui_input(struct gsm_ui *gui, int menu)
+{
+	struct ui_inst *ui = &gui->ui;
+
+	/* go to input screen */
+	gui->menu = menu;
+	ui_inst_init(ui, &ui_stringview, key_input_cb, beep_cb,
+		telnet_cb);
+	ui->title = "Select:";
+	ui->ud.stringview.number = gui->dialing;
+	ui->ud.stringview.num_len = sizeof(gui->dialing);
+	ui->ud.stringview.pos = 1;
+	ui_inst_refresh(ui);
+
+	return 0;
+}
+
+static int key_input_cb(struct ui_inst *ui, enum ui_key kp)
+{
+	struct gsm_ui *gui = container_of(ui, struct gsm_ui, ui);
+
+	if (kp == UI_KEY_PICKUP) {
+		/* go to previous screen and use input */
+		gui_supserv(gui, 1);
+
+		return 1; /* handled */
+	}
+	if (kp == UI_KEY_HANGUP) {
+		/* go to previous screen */
+		gui->dialing[0] = '\0';
+		gui_supserv(gui, 0);
+
+		return 1; /* handled */
+	}
+
+	return 0;
+}
+

@@ -36,7 +36,9 @@ struct gsm_ui {
 	void *choose_menu;	/* current choose item in menu */
 
 	/* supserv */
+	int ss_lines;		/* number of lines we display */
 	int ss_pending, ss_active;
+				/* state of transaction */
 };
 
 void gui_init_status_config(void);
