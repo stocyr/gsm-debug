@@ -73,6 +73,8 @@ int l1ctl_ph_prim_cb(struct osmo_prim_hdr *oph, void *ctx);
 /* Transmit L1CTL_NEIGH_PM_REQ */
 int l1ctl_tx_neigh_pm_req(struct osmocom_ms *ms, int num, uint16_t *arfcn);
 
-int l1ctl_tx_display_req(struct osmocom_ms *ms, int x, int y, char *text);
+int l1ctl_tx_display_req(struct osmocom_ms *ms, uint8_t x, uint8_t y, 
+	uint8_t fg, uint8_t bg, uint8_t font, uint8_t clear, uint8_t flush, 
+	char *text);
 
 #endif
