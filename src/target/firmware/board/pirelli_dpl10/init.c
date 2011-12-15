@@ -111,10 +111,10 @@ void board_init(void)
 	timer_init();
 
 	/* Initialize LCD driver (uses I2C) and backlight */
-	display = &st7558_display;
-	display_init();
-	bl_mode_pwl(1);
-	bl_level(0);
+//	display = &st7558_display;
+//	display_init();
+//	bl_mode_pwl(1);
+//	bl_level(0);
 
 	/* Initialize keypad driver */
 	keypad_init(1);

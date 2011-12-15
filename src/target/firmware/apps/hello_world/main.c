@@ -95,7 +95,7 @@ int main(void)
 	fb_setfont(FB_FONT_HELVB14);
 
 	fb_gotoxy(2,20);
-	fb_putstr("Hello World!",framebuffer->width-4);
+	fb_putstr("Hello World!",-1);
 
 	fb_setfg(FB_COLOR_RED);
 	fb_setbg(FB_COLOR_BLUE);

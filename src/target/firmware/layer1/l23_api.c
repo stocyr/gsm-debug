@@ -42,7 +42,7 @@
 #include <abb/twl3025.h>
 #include <rf/trf6151.h>
 #include <calypso/sim.h>
-#include <display.h>
+#include <fb/framebuffer.h>
 
 #include <l1ctl_proto.h>
 
@@ -592,8 +592,8 @@ static void l1ctl_display_req(struct msgb *msg)
 	struct l1ctl_display_req *dr = (struct l1ctl_display_req *) l1h->data;
 
 	printf("DISPLAY (%d) %s\n", dr->y, dr->text);
-//	display_goto_xy(dr->x, dr->y);
-	display_puts(dr->text);
+	fb_gotoxy(dr->x, dr->y);
+	fb_putstr(dr->text, 100);
 }
 
 /* callback from SERCOMM when L2 sends a message to L1 */

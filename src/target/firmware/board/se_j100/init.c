@@ -127,10 +127,10 @@ void board_init(void)
 	timer_init();
 
 	/* Initialize LCD driver (uses UWire) and backlight */
-	display = &ssd1963_display;
-	display_init();
-	bl_mode_pwl(1);
-	bl_level(50);
+//	display = &ssd1963_display;
+//	display_init();
+//	bl_mode_pwl(1);
+//	bl_level(50);
 
 	/* Initialize keypad driver */
 	keypad_init(1);
