@@ -29,6 +29,8 @@
 #include <debug.h>
 #include <byteorder.h>
 
+#include <asm/system.h>
+
 #include <osmocom/core/msgb.h>
 #include <osmocom/gsm/protocol/gsm_04_08.h>
 #include <comm/sercomm.h>
@@ -596,10 +598,31 @@ static void l1ctl_display_req(struct msgb *msg)
 	fb_putstr(dr->text, 100);
 }
 
+static struct llist_head l23_rx_queue = LLIST_HEAD_INIT(l23_rx_queue);
+
 /* callback from SERCOMM when L2 sends a message to L1 */
 static void l1a_l23_rx_cb(uint8_t dlci, struct msgb *msg)
 {
-	struct l1ctl_hdr *l1h = (struct l1ctl_hdr *) msg->data;
+	unsigned long flags;
+
+	local_firq_save(flags);
+	msgb_enqueue(&l23_rx_queue, msg);
+	local_irq_restore(flags);
+}
+
+void l1a_l23_handler(void)
+{
+	struct msgb *msg;
+	struct l1ctl_hdr *l1h;
+	unsigned long flags;
+
+	local_firq_save(flags);
+	msg = msgb_dequeue(&l23_rx_queue);
+	local_irq_restore(flags);
+	if (!msg)
+		return;
+
+	l1h = (struct l1ctl_hdr *) msg->data;
 
 #if 0
 	{
