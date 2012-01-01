@@ -36,6 +36,7 @@ static int status_netname(struct osmocom_ms *ms, char *text)
 {
 	struct gsm48_mmlayer *mm = &ms->mmlayer;
 	struct gsm322_cellsel *cs = &ms->cellsel;
+	struct gsm_subscriber *subscr = &ms->subscr;
 	int len, shift;
 
 	/* No Service */
@@ -53,9 +54,19 @@ static int status_netname(struct osmocom_ms *ms, char *text)
 	  || mm->substate == GSM48_MM_SST_PLMN_SEARCH)) {
 		strncpy(text, "Searching...", UI_COLS);
 	} else
+	if (mm->state == GSM48_MM_ST_MM_IDLE
+	 && (mm->substate != GSM48_MM_SST_NORMAL_SERVICE
+	  && mm->substate != GSM48_MM_SST_PLMN_SEARCH_NORMAL)) {
+		strncpy(text, "Emerg. only", UI_COLS);
+	} else
 	/* no network selected */
 	if (!cs->selected) {
 		strncpy(text, "", UI_COLS);
+	} else
+	/* HPLM is the currently selected network, and we have a SPN */
+	if (cs->selected && subscr->sim_valid && subscr->sim_spn[0] 
+	 && gsm_match_mnc(cs->sel_mcc, cs->sel_mnc, subscr->imsi)) {
+		strncpy(text, subscr->sim_spn, UI_COLS);
 	} else
 	/* network name set for currently selected network */
 	if (cs->selected && (mm->name_short[0] || mm->name_long[0])
@@ -1519,7 +1530,7 @@ static void update_status(void *arg)
 	struct osmocom_ms *ms = arg;
 	struct gsm_settings *set = &ms->settings;
 	struct gsm_ui *gui = &ms->gui;
-	int i, j = 0, n, lines = 0, has_network_name = 0, has_bottom_line = 0;
+	int i, j = 0, k, n, lines = 0, has_network_name = 0, has_bottom_line = 0;
 	char *p = gui->status_text;
 
 	/* no timer, if no telnet connection */
@@ -1562,16 +1573,16 @@ static void update_status(void *arg)
 		/* if not all lines are occupied */
 		if (j + has_bottom_line < UI_ROWS && j > 1) {
 			/* insert space below network name */
-			memcpy(gui->status_lines + 2, gui->status_lines + 1,
-				(j - 1) * sizeof(char *));
+			for (k = j; k > 1; k--)
+				gui->status_lines[k] = gui->status_lines[k - 1];
 			gui->status_lines[1] = "";
 			j++;
 		}
 		/* if not all lines are occupied */
 		if (j + has_bottom_line < UI_ROWS && j > 1) {
 			/* insert space above network name */
-			memcpy(gui->status_lines + 1, gui->status_lines,
-				j * sizeof(char *));
+			for (k = j; k > 0; k--)
+				gui->status_lines[k] = gui->status_lines[k - 1];
 			gui->status_lines[0] = "";
 			j++;
 		}
