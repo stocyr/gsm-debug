@@ -1840,10 +1840,11 @@ static int gsm322_cs_select(struct osmocom_ms *ms, int index, uint16_t mcc,
 
 	/* loop through all scanned frequencies and select cell.
 	 * if an index is given (arfci), we just check this cell only */
-	if (index >= 0)
+	if (index >= 0) {
 		start = end = index;
-	else
+	} else {
 		start = 0; end = 1023+299;
+	}
 	for (i = start; i <= end; i++) {
 		cs->list[i].flags &= ~GSM322_CS_FLAG_TEMP_AA;
 		s = cs->list[i].sysinfo;
@@ -3030,9 +3031,9 @@ int gsm322_l1_signal(unsigned int subsys, unsigned int signal,
 		LOGP(DCS, LOGL_INFO, "Loss of CCCH.\n");
 		if (cs->selected && cs->sel_arfcn == cs->arfcn) {
 			/* do not unselect cell */
-			LOGP(DCS, LOGL_INFO, "Kepp cell after loss, so we can "
-				"use the Neighbour cell information for cell "
-				"re-selection.\n");
+			LOGP(DCS, LOGL_INFO, "Keep cell selected after loss, "
+				"so we can use the Neighbour cell information "
+				"for cell re-selection.\n");
 		}
 		stop_cs_timer(cs);
 		gsm322_cs_loss(cs);

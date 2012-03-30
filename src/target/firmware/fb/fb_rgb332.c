@@ -90,7 +90,7 @@ fb_rgb332_update_damage(
 static uint8_t rgb_to_pixel(uint32_t color){
 	uint8_t ret;
 	ret  = (FB_COLOR_TO_R(color) & 0xe0);      /* 765 = RRR */
-	ret |= (FB_COLOR_TO_G(color) & 0xe0) >> 2; /* 432 = GGG */
+	ret |= (FB_COLOR_TO_G(color) & 0xe0) >> 3; /* 432 = GGG */
 	ret |= (FB_COLOR_TO_B(color) & 0xc0) >> 6; /*  10 =  BB */
 	return ret;
 }
@@ -200,18 +200,18 @@ int fb_rgb332_putstr(char *str,int maxwidth){
 
 	int x1,y1,x2,y2; 		// will become bounding box
 	int y;				// coordinates in display
-	int char_x,char_y;		// coordinates in font character
+	int char_x=0,char_y;		// coordinates in font character
 	int bitmap_x,bitmap_y;		// coordinates in character's bitmap
 	int byte_per_line;		// depending on character width in font
 	int bitmap_offs,bitmap_bit;	// offset inside bitmap, bit number of pixel
-	uint8_t *p,fgpixel,bgpixel;	// pointer into framebuffer memory
+	uint8_t *p,fgpixel,bgpixel,trans; // pointer into framebuffer memory
 	int total_w;			// total width
 
 	/* center, if maxwidth < 0 */
 	if (maxwidth < 0) {
 		total_w = 0;
 		/* count width of string */
-		for(p=str;*p;p++){
+		for(p=(uint8_t *)str;*p;p++){
 			fchr = fb_font_get_char(font,*p);
 			if(!fchr)  /* FIXME: Does '?' exist in every font? */
 				fchr = fb_font_get_char(font,'?');
@@ -236,6 +236,7 @@ int fb_rgb332_putstr(char *str,int maxwidth){
 
 	fgpixel = rgb_to_pixel(framebuffer->fg_color);
 	bgpixel = rgb_to_pixel(framebuffer->bg_color);
+	trans = (framebuffer->bg_color == FB_COLOR_TRANSP);
 
 	if(y1 < 0)			// sanitize in case of overflow
 		y1 = 0;
@@ -288,7 +289,8 @@ int fb_rgb332_putstr(char *str,int maxwidth){
 					*p = fgpixel;
 				} else { // unset, or outside bitmap
 outside_char_bitmap:
-					*p = bgpixel;
+					if (!trans)
+						*p = bgpixel;
 				}
 				p++;
 			} // for(x...)

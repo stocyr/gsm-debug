@@ -90,12 +90,12 @@ int main(void)
 
 	fb_clear();
 
-	fb_setfg(FB_COLOR_GREEN);
+	fb_setfg(FB_COLOR_BLACK);
 	fb_setbg(FB_COLOR_WHITE);
 	fb_setfont(FB_FONT_HELVB14);
 
 	fb_gotoxy(2,20);
-	fb_putstr("Hello World!",-1);
+	fb_putstr("Hello World!",framebuffer->width-4);
 
 	fb_setfg(FB_COLOR_RED);
 	fb_setbg(FB_COLOR_BLUE);
@@ -126,7 +126,7 @@ int main(void)
 	/* beyond this point we only react to interrupts */
 	puts("entering interrupt loop\n");
 	while (1) {
-		update_timers();
+		osmo_timers_update();
 	}
 
 	twl3025_power_off();
