@@ -12,7 +12,7 @@ int cons_rb_flush(void);
 void cons_init(void);
 
 /* We want the console on UART 0 (IRDA UART) */
-#define CONS_UART_NR	0
+#define CONS_UART_NR	1
 
 /* Size of the static ring-buffer that we keep for console print messages */
 #define CONS_RB_SIZE	4096
