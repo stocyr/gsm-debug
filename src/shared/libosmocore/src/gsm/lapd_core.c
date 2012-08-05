@@ -707,7 +707,7 @@ static void lapd_acknowledge(struct lapd_msg_ctx *lctx)
 {
 	struct lapd_datalink *dl = lctx->dl;
 	uint8_t nr = lctx->n_recv;
-	int s = 0, rej = 0, t200_reset = 0, t200_start = 0;
+	int s = 0, rej = 0, t200_reset = 0;
 	int i, h;
 
 	/* supervisory frame ? */
@@ -758,7 +758,6 @@ static void lapd_acknowledge(struct lapd_msg_ctx *lctx)
 		if (dl->tx_hist[sub_mod(dl->v_send, 1, dl->range_hist)].msg) {
 			LOGP(DLLAPD, LOGL_INFO, "start T200, due to unacked I "
 				"frame(s)\n");
-			t200_start = 1;
 			lapd_start_t200(dl);
 		}
 	}
@@ -782,7 +781,7 @@ static int lapd_rx_u(struct msgb *msg, struct lapd_msg_ctx *lctx)
 {
 	struct lapd_datalink *dl = lctx->dl;
 	int length = lctx->length;
-	int rc;
+	int rc = 0;
 	uint8_t prim, op;
 
 	switch (lctx->s_u) {
@@ -1497,14 +1496,32 @@ static int lapd_rx_i(struct msgb *msg, struct lapd_msg_ctx *lctx)
 		     "V(R)=%u\n", ns, dl->v_recv);
 		/* discard data */
 		msgb_free(msg);
-		if (!dl->seq_err_cond) {
+		if (dl->seq_err_cond != 1) {
 			/* FIXME: help me understand what exactly todo here
-			dl->seq_err_cond = 1;
 			*/
+			dl->seq_err_cond = 1;
 			lapd_send_rej(lctx, lctx->p_f);
 		} else {
+			/* If there are two subsequent sequence errors received,
+			 * ignore it. (Ignore every second subsequent error.)
+			 * This happens if our reply with the REJ is too slow,
+			 * so the remote gets a T200 timeout and sends another
+			 * frame with a sequence error.
+			 * Test showed that replying with two subsequent REJ
+			 * messages could the remote L2 process to abort.
+			 * Replying too slow shouldn't happen, but may happen
+			 * over serial link between BB and LAPD.
+			 */
+			dl->seq_err_cond = 2;
 		}
-		return -EIO;
+		/* Even if N(s) sequence error, acknowledge to N(R)-1 */
+		/* 5.5.3.1: Acknowlege all transmitted frames up the N(R)-1 */
+		lapd_acknowledge(lctx); /* V(A) is also set here */
+
+		/* Send message, if possible due to acknowledged data */
+		lapd_send_i(lctx, __LINE__);
+
+		return 0;
 	}
 	dl->seq_err_cond = 0;
 
@@ -1713,7 +1730,15 @@ static int lapd_data_req(struct osmo_dlsap_prim *dp, struct lapd_msg_ctx *lctx)
 	struct lapd_datalink *dl = lctx->dl;
 	struct msgb *msg = dp->oph.msg;
 
-	LOGP(DLLAPD, LOGL_INFO, "writing message to send-queue\n");
+	if (msgb_l3len(msg) == 0) {
+		LOGP(DLLAPD, LOGL_ERROR,
+			"writing an empty message is not possible.\n");
+		msgb_free(msg);
+		return -1;
+	}
+
+	LOGP(DLLAPD, LOGL_INFO,
+	     "writing message to send-queue: l3len: %d\n", msgb_l3len(msg));
 
 	/* Write data into the send queue */
 	msgb_enqueue(&dl->send_queue, msg);

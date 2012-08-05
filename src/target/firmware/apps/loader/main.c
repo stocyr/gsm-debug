@@ -45,6 +45,7 @@
 #include <calypso/tsp.h>
 #include <calypso/irq.h>
 #include <calypso/misc.h>
+#include <calypso/backlight.h>
 #include <uart.h>
 #include <calypso/timer.h>
 
@@ -151,7 +152,7 @@ int main(void)
 	sercomm_init();
 
 	/* Say hi */
-	puts("\n\nOSMOCOM Loader (revision " GIT_REVISION ")\n");
+	puts("\n\nOsmocomBB Loader (revision " GIT_REVISION ")\n");
 	puts(hr);
 
 	/* Identify environment */

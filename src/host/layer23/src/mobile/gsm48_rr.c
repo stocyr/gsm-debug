@@ -3251,7 +3251,7 @@ static int gsm48_rr_dl_est(struct osmocom_ms *ms)
 		gh->msg_type = GSM48_MT_RR_PAG_RESP;
 		pr = (struct gsm48_pag_rsp *) msgb_put(nmsg, sizeof(*pr));
 		/* key sequence */
-		pr->key_seq = subscr->key_seq;
+		pr->key_seq = gsm_subscr_get_key_seq(ms, subscr);
 		/* classmark 2 */
 		pr->cm2_len = sizeof(pr->cm2);
 		gsm48_rr_enc_cm2(ms, &pr->cm2, rr->cd_now.arfcn);
@@ -3391,7 +3391,7 @@ static int gsm48_rr_rx_chan_rel(struct osmocom_ms *ms, struct msgb *msg)
 	}
 	tlv_parse(&tp, &gsm48_rr_att_tlvdef, cr->data, payload_len, 0, 0);
 
-	LOGP(DRR, LOGL_INFO, "channel release request with cause 0x%02x)\n",
+	LOGP(DRR, LOGL_INFO, "channel release request with cause 0x%02x\n",
 		cr->rr_cause);
 
 	/* BA range */

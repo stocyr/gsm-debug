@@ -1841,7 +1841,6 @@ static int gsm48_mm_imsi_detach_end(struct osmocom_ms *ms, struct msgb *msg)
 	/* stop IMSI detach timer (if running) */
 	stop_mm_t3220(mm);
 
-
 	/* SIM invalid */
 	subscr->sim_valid = 0;
 
@@ -1866,6 +1865,24 @@ static int gsm48_mm_imsi_detach_end(struct osmocom_ms *ms, struct msgb *msg)
 
 	/* return to MM IDLE */
 	return gsm48_mm_return_idle(ms, NULL);
+}
+
+/* abort radio connection */
+static int gsm48_mm_imsi_detach_abort(struct osmocom_ms *ms, struct msgb *msg)
+{
+	struct msgb *nmsg;
+	struct gsm48_rr_hdr *nrrh;
+
+	/* abort RR if timer fired */
+	nmsg = gsm48_rr_msgb_alloc(GSM48_RR_ABORT_REQ);
+	if (!nmsg)
+		return -ENOMEM;
+	nrrh = (struct gsm48_rr_hdr *) nmsg->data;
+	nrrh->cause = GSM48_RR_CAUSE_NORMAL;
+	gsm48_rr_downmsg(ms, nmsg);
+
+	/* imsi detach has ended now */
+	return gsm48_mm_imsi_detach_end(ms, msg);
 }
 
 /* start an IMSI detach in MM IDLE */
@@ -2327,7 +2344,7 @@ static int gsm48_mm_tx_loc_upd_req(struct osmocom_ms *ms)
 	/* location updating type */
 	nlu->type = mm->lupd_type;
 	/* cipering key */
-	nlu->key_seq = subscr->key_seq;
+	nlu->key_seq = gsm_subscr_get_key_seq(ms, subscr);
 	/* LAI (last SIM stored LAI)
 	 *
 	 * NOTE: The TMSI is only valid within a LAI!
@@ -2789,7 +2806,7 @@ static int gsm48_mm_tx_cm_serv_req(struct osmocom_ms *ms, int rr_prim,
 
 	/* type and key */
 	nsr->cm_service_type = cm_serv;
-	nsr->cipher_key_seq = subscr->key_seq;
+	nsr->cipher_key_seq = gsm_subscr_get_key_seq(ms, subscr);
 	/* classmark 2 */
 	cm2lv[0] = sizeof(struct gsm48_classmark2);
 	gsm48_rr_enc_cm2(ms, (struct gsm48_classmark2 *)(cm2lv + 1),
@@ -4233,8 +4250,8 @@ static struct eventstate {
 	{ALL_STATES, ALL_STATES,
 	 GSM48_MM_EVENT_IMSI_DETACH, gsm48_mm_imsi_detach_delay},
 
-	{GSM48_MM_ST_IMSI_DETACH_INIT, ALL_STATES,
-	 GSM48_MM_EVENT_TIMEOUT_T3220, gsm48_mm_imsi_detach_end},
+	{SBIT(GSM48_MM_ST_IMSI_DETACH_INIT), ALL_STATES,
+	 GSM48_MM_EVENT_TIMEOUT_T3220, gsm48_mm_imsi_detach_abort},
 
 	/* location update in other cases */
 	{SBIT(GSM48_MM_ST_MM_IDLE), ALL_STATES,
@@ -4263,7 +4280,8 @@ static struct eventstate {
 	 GSM48_MM_EVENT_TIMEOUT_T3240, gsm48_mm_abort_rr},
 
 	/* T3230 timed out */
-	{SBIT(GSM48_MM_ST_MM_IDLE), SBIT(GSM48_MM_SST_NORMAL_SERVICE),
+	{SBIT(GSM48_MM_ST_WAIT_OUT_MM_CONN) |
+	 SBIT(GSM48_MM_ST_WAIT_ADD_OUT_MM_CON), ALL_STATES,
 	 GSM48_MM_EVENT_TIMEOUT_T3230, gsm48_mm_timeout_mm_con},
 
 	/* SIM reports SRES */
