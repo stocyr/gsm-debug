@@ -223,7 +223,7 @@ int serial_up_to_eleven(void)
 	int rv;
 
 	/* Attempt custom baudrate */
-	rv = osmo_serial_set_custom_baudrate(dnload.serial_fd.fd, 406250);
+	rv = osmo_serial_set_custom_baudrate(dnload.serial_fd.fd, 812500);  /* old: 406250 */
 	if (rv == 0)
 		return 0;
 
