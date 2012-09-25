@@ -27,7 +27,7 @@
 /*! \file rate_ctr.c */
 
 
-#include <stdint.h>
+//#include <stdint.h> // GPRS patch
 #include <string.h>
 
 #include <osmocom/core/utils.h>

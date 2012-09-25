@@ -118,7 +118,7 @@ sniff_get_local_page(int r_wn /* 0=W, 1=R */)
 /* Sniff command & response                                                 */
 /* ------------------------------------------------------------------------ */
 
-static int
+static
 l1s_sniff_resp(uint8_t ul, uint8_t burst_id, uint16_t p3)
 {
 	struct sniff_db *sp = sniff_get_page(1);
@@ -175,15 +175,18 @@ l1s_sniff_resp(uint8_t ul, uint8_t burst_id, uint16_t p3)
 	bi->frame_nr = htonl(rx_time.fn);
 
 		/* ARFCN */
-	if (ul)
+	if (ul) {
 		rf_arfcn |= ARFCN_UPLINK;
+		burst_id += 3; // GPRS patch
+	}
 	bi->band_arfcn = htons(rf_arfcn);
 
 		/* Set Channel Number depending on MFrame Task ID */
-	bi->chan_nr = mframe_task2chan_nr(mf_task_id, tn);
+	bi->chan_nr = mframe_task2chan_nr(mf_task_id, (tn+burst_id)%8); // GPRS patch. old: ...tn);
+
 
 		/* Set burst id */
-	bi->flags = burst_id;
+	bi->flags = 0; //burst_id; // GPRS patch
 
 		/* Set SACCH indication */
 	if (mf_task_flags & MF_F_SACCH)
@@ -242,38 +245,78 @@ l1s_sniff_cmd(uint8_t ul, __unused uint8_t burst_id, __unused uint16_t p3)
 	dsp_api.db_w->d_ctrl_system |= (1 << B_BCCH_FREQ_IND);
 
 	if (ul) {
-		l1s_rx_win_ctrl(arfcn | ARFCN_UPLINK, L1_RXWIN_NB, 3);
+		l1s_rx_win_ctrl(arfcn | ARFCN_UPLINK, L1_RXWIN_NB, burst_id); // GPRS patch. old: ...3);
 	} else {
-		l1s_rx_win_ctrl(arfcn, L1_RXWIN_NB, 0);
+		l1s_rx_win_ctrl(arfcn, L1_RXWIN_NB, burst_id); // GPRS patch. old: ...0);
 	}
 
 	return 0;
 }
 
+/* GPRS patch:
+SCHED_ITEM(l1s_sniff_resp, -5, 0, 0)
+SCHED_ITEM(l1s_sniff_resp, -5, 0, 0) old: 1
+SCHED_ITEM(l1s_sniff_resp, -5, 0, 0) old: 2
+SCHED_ITEM(l1s_sniff_resp, -5, 0, 0) old: 3
+*/
 const struct tdma_sched_item sniff_xcch_dl_sched_set[] = {
 						SCHED_ITEM_DT(l1s_sniff_cmd, 0, 0, 0),	SCHED_END_FRAME(),
 						SCHED_ITEM_DT(l1s_sniff_cmd, 0, 0, 1),	SCHED_END_FRAME(),
 	SCHED_ITEM(l1s_sniff_resp, -5, 0, 0),	SCHED_ITEM_DT(l1s_sniff_cmd, 0, 0, 2),	SCHED_END_FRAME(),
-	SCHED_ITEM(l1s_sniff_resp, -5, 0, 1),	SCHED_ITEM_DT(l1s_sniff_cmd, 0, 0, 3),	SCHED_END_FRAME(),
-	SCHED_ITEM(l1s_sniff_resp, -5, 0, 2),						SCHED_END_FRAME(),
-	SCHED_ITEM(l1s_sniff_resp, -5, 0, 3),						SCHED_END_FRAME(),
+	SCHED_ITEM(l1s_sniff_resp, -5, 0, 0),	SCHED_ITEM_DT(l1s_sniff_cmd, 0, 0, 3),	SCHED_END_FRAME(),
+	SCHED_ITEM(l1s_sniff_resp, -5, 0, 0),						SCHED_END_FRAME(),
+	SCHED_ITEM(l1s_sniff_resp, -5, 0, 0),						SCHED_END_FRAME(),
 	SCHED_END_SET()
 };
 
+/* GPRS patch:
+SCHED_ITEM(l1s_sniff_resp, -4, 1, 0)
+SCHED_ITEM(l1s_sniff_resp, -4, 1, 0) old: 1
+SCHED_ITEM(l1s_sniff_resp, -4, 1, 0) old: 2
+SCHED_ITEM(l1s_sniff_resp, -4, 1, 0) old: 3
+*/
 const struct tdma_sched_item sniff_xcch_ul_sched_set[] = {
 						SCHED_ITEM_DT(l1s_sniff_cmd, 3, 1, 0),	SCHED_END_FRAME(),
 						SCHED_ITEM_DT(l1s_sniff_cmd, 3, 1, 1),	SCHED_END_FRAME(),
 	SCHED_ITEM(l1s_sniff_resp, -4, 1, 0),	SCHED_ITEM_DT(l1s_sniff_cmd, 3, 1, 2),	SCHED_END_FRAME(),
-	SCHED_ITEM(l1s_sniff_resp, -4, 1, 1),	SCHED_ITEM_DT(l1s_sniff_cmd, 3, 1, 3),	SCHED_END_FRAME(),
-	SCHED_ITEM(l1s_sniff_resp, -4, 1, 2),						SCHED_END_FRAME(),
-	SCHED_ITEM(l1s_sniff_resp, -4, 1, 3),						SCHED_END_FRAME(),
+	SCHED_ITEM(l1s_sniff_resp, -4, 1, 0),	SCHED_ITEM_DT(l1s_sniff_cmd, 3, 1, 3),	SCHED_END_FRAME(),
+	SCHED_ITEM(l1s_sniff_resp, -4, 1, 0),						SCHED_END_FRAME(),
+	SCHED_ITEM(l1s_sniff_resp, -4, 1, 0),						SCHED_END_FRAME(),
 	SCHED_END_SET()
 };
 
+/* Single slot capture */ // GPRS patch
+#if 0
 const struct tdma_sched_item sniff_tch_sched_set[] = {
 	SCHED_ITEM_DT(l1s_sniff_cmd, 0, 0, 0),	SCHED_ITEM_DT(l1s_sniff_cmd, 3, 1, 0),	SCHED_END_FRAME(),
 											SCHED_END_FRAME(),
 	SCHED_ITEM(l1s_sniff_resp, -5, 0, 0),	SCHED_ITEM(l1s_sniff_resp, -4, 1, 0),	SCHED_END_FRAME(),
 	SCHED_END_SET()
 };
+#endif
 
+/* Multislot capture */
+
+// Downlink
+#if 0
+const struct tdma_sched_item sniff_tch_sched_set[] = {
+       SCHED_ITEM_DT(l1s_sniff_cmd, 0, 0, 0),  SCHED_ITEM_DT(l1s_sniff_cmd, 2, 0, 2),
+       SCHED_ITEM_DT(l1s_sniff_cmd, 4, 0, 4),  SCHED_ITEM_DT(l1s_sniff_cmd, 6, 0, 6),  SCHED_END_FRAME(),
+                                                                                       SCHED_END_FRAME(),
+       SCHED_ITEM(l1s_sniff_resp, -5, 0, 0),   SCHED_ITEM(l1s_sniff_resp, -4, 0, 2),
+       SCHED_ITEM(l1s_sniff_resp, -3, 0, 4),   SCHED_ITEM(l1s_sniff_resp, -2, 0, 6),   SCHED_END_FRAME(),
+       SCHED_END_SET()
+};
+
+#else
+
+// Uplink
+const struct tdma_sched_item sniff_tch_sched_set[] = {
+       SCHED_ITEM_DT(l1s_sniff_cmd, 0, 1, 0),  SCHED_ITEM_DT(l1s_sniff_cmd, 2, 1, 2),
+       SCHED_ITEM_DT(l1s_sniff_cmd, 4, 1, 4),  SCHED_ITEM_DT(l1s_sniff_cmd, 6, 1, 6),  SCHED_END_FRAME(),
+                                                                                       SCHED_END_FRAME(),
+       SCHED_ITEM(l1s_sniff_resp, -5, 1, 0),   SCHED_ITEM(l1s_sniff_resp, -4, 1, 2),
+       SCHED_ITEM(l1s_sniff_resp, -3, 1, 4),   SCHED_ITEM(l1s_sniff_resp, -2, 1, 6),   SCHED_END_FRAME(),
+       SCHED_END_SET()
+};
+#endif

@@ -16,7 +16,7 @@
    one of the compilers producing working code right now. */
 
 #if __GNUC__ > 3
-#include_next <stdint.h>
+//#include_next <stdint.h> // GPRS patch
 #endif
 
 #ifndef __int8_t_defined

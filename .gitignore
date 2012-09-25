@@ -1,4 +1,5 @@
 *bursts*.dat
 src/shared/libosmocore/build-host/
 src/shared/libosmocore/build-target/
-
+.project
+.cproject

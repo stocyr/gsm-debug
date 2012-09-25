@@ -10,8 +10,8 @@
  * bucket contains of a list of callbacks which are executed when the bucket
  * index reaches that particular bucket. */
 
-#define TDMASCHED_NUM_FRAMES	25
-#define TDMASCHED_NUM_CB	8
+#define TDMASCHED_NUM_FRAMES	32 // GPRS patch. old: 25
+#define TDMASCHED_NUM_CB		16 // GPRS patch. old: 8
 
 #define TDMA_IFLG_TPU		(1<<0)
 #define TDMA_IFLG_DSP		(1<<1)
